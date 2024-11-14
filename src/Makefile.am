@@ -1,5 +1,4 @@
 AM_CFLAGS = -Wall -Werror -ggdb
-AM_LDFLAGS = -lpcap
 
 bin_PROGRAMS = ethping ethtrace dot1agd dot1ag_ccd
 
@@ -9,6 +8,8 @@ ethping_SOURCES = \
 	ieee8021ag.h \
 	dot1ag_eth.c \
 	dot1ag_eth.h
+ethping_LDADD = -lpcap
+
 
 ethtrace_SOURCES = \
 	ethtrace.c \
@@ -16,6 +17,7 @@ ethtrace_SOURCES = \
 	ieee8021ag.h \
 	dot1ag_eth.c \
 	dot1ag_eth.h
+ethtrace_LDADD = -lpcap
 
 dot1agd_SOURCES = \
 	dot1agd.c \
@@ -23,6 +25,7 @@ dot1agd_SOURCES = \
 	ieee8021ag.h \
 	dot1ag_eth.c \
 	dot1ag_eth.h
+dot1agd_LDADD = -lpcap
 
 dot1ag_ccd_SOURCES = \
 	dot1ag_ccd.c \
