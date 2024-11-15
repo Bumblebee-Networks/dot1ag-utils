@@ -33,3 +33,4 @@ dot1ag_ccd_SOURCES = \
 	ieee8021ag.h \
 	dot1ag_eth.c \
 	dot1ag_eth.h
+dot1ag_ccd_LDADD = -lpcap
