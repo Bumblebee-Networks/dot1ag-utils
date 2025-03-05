@@ -56,6 +56,7 @@ static void timeout_handler(int sig) {
 int main(int argc, char **argv) {
   int ch;
   char *ifname = NULL;
+  char *maintenance_domain = NULL;
   uint8_t localmac[ETHER_ADDR_LEN];
   struct bpf_program filter; /* compiled BPF filter */
   char filter_src[1024];
@@ -64,19 +65,24 @@ int main(int argc, char **argv) {
   struct sigaction act;
 
   /* parse command line options */
-  while ((ch = getopt(argc, argv, "hi:l:v:c:")) != -1) {
+  while ((ch = getopt(argc, argv, "hi:l:v:c:m:")) != -1) {
     switch (ch) {
     case 'h':
       usage();
-      break;
+      exit(EXIT_SUCCESS);
     case 'i':
       ifname = optarg;
+      break;
+    case 'm':
+      maintenance_domain = optarg;
       break;
     case '?':
     default:
       usage();
+      exit(EXIT_FAILURE);
     }
   }
+
   if (argc - optind != 0) {
     usage();
   }
@@ -133,9 +139,9 @@ int main(int argc, char **argv) {
     exit(EXIT_FAILURE);
   }
 
-  printf("Listening on interface %s for CFM frames\n", ifname);
   openlog("dot1agd", LOG_PID | LOG_CONS, LOG_USER);
   syslog(LOG_INFO, "Service starting...");
+  syslog(LOG_INFO, "Listening on interface %s for CFM frames", ifname);
 
   /* listen for CFM frames */
   while (1) {
@@ -167,10 +173,11 @@ int main(int argc, char **argv) {
         processLTM(ifname, (uint8_t *)data);
         break;
       case OAM_DMM:
-        printf("Received Delay Measurement Message\n");
+        syslog(LOG_INFO, "Received Delay Measurement Message");
+        processDMM(ifname, maintenance_domain);
         break;
       default:
-        printf("Received unknown CFM opcode %d\n", cfmhdr->opcode);
+        syslog(LOG_ERR, "Received unknown CFM opcode %d", cfmhdr->opcode);
         break;
       }
       break;
@@ -184,6 +191,6 @@ int main(int argc, char **argv) {
 }
 
 static void usage() {
-  fprintf(stderr, "usage: dot1agd -i interface\n");
+  fprintf(stderr, "usage: dot1agd -i interface [-m <maintenance_domain>]\n");
   exit(EXIT_FAILURE);
 }
