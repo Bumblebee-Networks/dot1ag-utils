@@ -425,7 +425,8 @@ int main(int argc, char **argv) {
         break;
       case OAM_DMM:
         syslog(LOG_INFO, "Received Delay Measurement Message");
-        processDMM(ifname, mdLevel, mepid, (uint8_t *)data);
+        processDMM(ifname, mdLevel, mepid, (uint8_t *)data,
+                   (int)pcap_hdr->caplen);
         break;
       default:
         break;
