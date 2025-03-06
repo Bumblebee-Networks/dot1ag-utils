@@ -56,7 +56,7 @@ static void timeout_handler(int sig) {
 int main(int argc, char **argv) {
   int ch;
   char *ifname = NULL;
-  char *maintenance_domain = NULL;
+  uint8_t md_level = 0;
   uint8_t localmac[ETHER_ADDR_LEN];
   struct bpf_program filter; /* compiled BPF filter */
   char filter_src[1024];
@@ -65,7 +65,7 @@ int main(int argc, char **argv) {
   struct sigaction act;
 
   /* parse command line options */
-  while ((ch = getopt(argc, argv, "hi:l:v:c:m:")) != -1) {
+  while ((ch = getopt(argc, argv, "hi:l:v:c:d:")) != -1) {
     switch (ch) {
     case 'h':
       usage();
@@ -73,8 +73,8 @@ int main(int argc, char **argv) {
     case 'i':
       ifname = optarg;
       break;
-    case 'm':
-      maintenance_domain = optarg;
+    case 'd':
+      md_level = atoi(optarg);
       break;
     case '?':
     default:
@@ -174,7 +174,7 @@ int main(int argc, char **argv) {
         break;
       case OAM_DMM:
         syslog(LOG_INFO, "Received Delay Measurement Message");
-        processDMM(ifname, maintenance_domain, (uint8_t *)data);
+        processDMM(ifname, md_level, (uint8_t *)data);
         break;
       default:
         syslog(LOG_ERR, "Received unknown CFM opcode %d", cfmhdr->opcode);

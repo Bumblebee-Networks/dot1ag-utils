@@ -247,7 +247,7 @@ void print_ltr(uint8_t *buf) {
   }
 }
 
-int processDMM(char *ifname, char *md, uint8_t *dmm_frame) {
+int processDMM(char *ifname, uint8_t md_level, uint8_t *dmm_frame) {
 
   uint8_t local_mac[ETHER_ADDR_LEN];
   struct cfmencap *encap;
