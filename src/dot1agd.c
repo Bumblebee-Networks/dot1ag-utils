@@ -174,7 +174,7 @@ int main(int argc, char **argv) {
         break;
       case OAM_DMM:
         syslog(LOG_INFO, "Received Delay Measurement Message");
-        processDMM(ifname, maintenance_domain);
+        processDMM(ifname, maintenance_domain, (uint8_t *)data);
         break;
       default:
         syslog(LOG_ERR, "Received unknown CFM opcode %d", cfmhdr->opcode);
