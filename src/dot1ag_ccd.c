@@ -423,6 +423,10 @@ int main(int argc, char **argv) {
         break;
       case CFM_LTM:
         break;
+      case OAM_DMM:
+        syslog(LOG_INFO, "Received Delay Measurement Message");
+        processDMM(ifname, mdLevel, mepid, (uint8_t *)data);
+        break;
       default:
         break;
       }
