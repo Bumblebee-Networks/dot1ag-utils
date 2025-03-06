@@ -249,7 +249,7 @@ void print_ltr(uint8_t *buf) {
 }
 
 void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
-                uint8_t *dmm_frame, int size) {
+                uint8_t *dmm_frame, int size, int verbose) {
 
   uint8_t local_mac[ETHER_ADDR_LEN];
   struct cfmencap *encap;
@@ -261,6 +261,8 @@ void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
   struct ether_header *dmm_ehdr;
   struct ether_header *dmr_ehdr;
   int i;
+
+  verbose = 1;
 
   if (get_local_mac(ifname, local_mac) != 0) {
     fprintf(stderr, "Cannot determine local MAC address\n");
@@ -279,11 +281,14 @@ void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
   cfmhdr = CFMHDR(dmm_frame);
   md_level_received = GET_MD_LEVEL(cfmhdr);
 
-  syslog(LOG_INFO,
-         "rcvd DMM: "
-         "%02x:%02x:%02x:%02x:%02x:%02x, level %d size %d",
-         encap->srcmac[0], encap->srcmac[1], encap->srcmac[2], encap->srcmac[3],
-         encap->srcmac[4], encap->srcmac[5], md_level_received, size);
+  if (verbose) {
+    syslog(LOG_INFO,
+           "rcvd DMM: "
+           "%02x:%02x:%02x:%02x:%02x:%02x, level %d size %d",
+           encap->srcmac[0], encap->srcmac[1], encap->srcmac[2],
+           encap->srcmac[3], encap->srcmac[4], encap->srcmac[5],
+           md_level_received, size);
+  }
 
   if (md_level_received != md_level) {
     syslog(LOG_ERR, "expected level %d, received level %d, discard frame\n",
@@ -294,18 +299,6 @@ void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
 
   dmm_hdr = POS_CFM_DM(dmm_frame);
 
-  /* Convert timestamps from network byte order and log them */
-  uint32_t ts_T1 = ntohl(dmm_hdr->timestamp_T1);
-  uint32_t ts_T2 = ntohl(dmm_hdr->timestamp_T2);
-  uint32_t ts_T3 = ntohl(dmm_hdr->timestamp_T3);
-  uint32_t ts_reserved = ntohl(dmm_hdr->reserved);
-
-  syslog(LOG_INFO, "DMM Timestamps:");
-  syslog(LOG_INFO, "  Timestamp T1: %u", ts_T1);
-  syslog(LOG_INFO, "  Timestamp T2: %u", ts_T2);
-  syslog(LOG_INFO, "  Timestamp T3: %u", ts_T3);
-  syslog(LOG_INFO, "  Reserved for DMR receiving equipment: %u", ts_reserved);
-
   memset(dmr_frame, 0, sizeof(dmr_frame));
 
   memcpy(dmr_frame, dmm_frame, size);
@@ -314,32 +307,34 @@ void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
     dmr_ehdr->ether_shost[i] = local_mac[i];
     dmr_ehdr->ether_dhost[i] = dmm_ehdr->ether_shost[i];
   }
-
   cfmhdr = CFMHDR(dmr_frame);
   cfmhdr->opcode = OAM_DMR;
-
   dmr_hdr = POS_CFM_DM(dmr_frame);
-
   dmr_hdr->timestamp_T1 = dmm_hdr->timestamp_T1;
-
   struct timeval tv;
   gettimeofday(&tv, NULL);
   dmr_hdr->timestamp_T2 = htonl((uint32_t)tv.tv_sec);
-
   gettimeofday(&tv, NULL);
   dmr_hdr->timestamp_T3 = htonl((uint32_t)tv.tv_sec);
-
   /* Convert timestamps from network byte order and log them */
-  uint32_t tsr_T1 = ntohl(dmr_hdr->timestamp_T1);
-  uint32_t tsr_T2 = ntohl(dmr_hdr->timestamp_T2);
-  uint32_t tsr_T3 = ntohl(dmr_hdr->timestamp_T3);
-  uint32_t tsr_reserved = ntohl(dmr_hdr->reserved);
+  uint32_t ts_T1 = ntohl(dmr_hdr->timestamp_T1);
+  uint32_t ts_T2 = ntohl(dmr_hdr->timestamp_T2);
+  uint32_t ts_T3 = ntohl(dmr_hdr->timestamp_T3);
+  uint32_t ts_reserved = ntohl(dmr_hdr->reserved);
 
-  syslog(LOG_INFO, "DMR Timestamps:");
-  syslog(LOG_INFO, "  Timestamp T1: %u", tsr_T1);
-  syslog(LOG_INFO, "  Timestamp T2: %u", tsr_T2);
-  syslog(LOG_INFO, "  Timestamp T3: %u", tsr_T3);
-  syslog(LOG_INFO, "  Reserved for DMR receiving equipment: %u", tsr_reserved);
+  if (verbose) {
+    syslog(LOG_INFO, "DMR Timestamps:");
+    syslog(LOG_INFO, "  Timestamp T1: %u", ts_T1);
+    syslog(LOG_INFO, "  Timestamp T2: %u", ts_T2);
+    syslog(LOG_INFO, "  Timestamp T3: %u", ts_T3);
+    syslog(LOG_INFO, "  Reserved for DMR receiving equipment: %u", ts_reserved);
+    syslog(LOG_INFO,
+           "send DMR: "
+           "%02x:%02x:%02x:%02x:%02x:%02x, level %d size %d",
+           dmr_ehdr->ether_dhost[0], dmr_ehdr->ether_dhost[1],
+           dmr_ehdr->ether_dhost[2], dmr_ehdr->ether_dhost[3],
+           dmr_ehdr->ether_dhost[4], dmr_ehdr->ether_dhost[5], md_level, size);
+  }
 
   if (send_packet(ifname, dmr_frame, size) < 0) {
     perror("send_packet");
