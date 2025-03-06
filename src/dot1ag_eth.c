@@ -249,12 +249,12 @@ void print_ltr(uint8_t *buf) {
 }
 
 void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
-                uint8_t *dmm_frame) {
+                uint8_t *data) {
 
   uint8_t local_mac[ETHER_ADDR_LEN];
   struct cfmencap *encap;
   struct cfmhdr *cfmhdr;
-  struct cfm_cc *cfm_cc;
+  struct cfm_dmm *dmm_frame;
   uint8_t md_level_received;
 
   if (get_local_mac(ifname, local_mac) != 0) {
@@ -262,23 +262,20 @@ void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
     exit(EXIT_FAILURE);
   }
 
-  encap = (struct cfmencap *)dmm_frame;
+  encap = (struct cfmencap *)data;
 
   if (ETHER_IS_EQUAL(encap->srcmac, local_mac)) {
     return;
   }
 
-  cfm_cc = POS_CFM_CC(dmm_frame);
-
-  cfmhdr = CFMHDR(dmm_frame);
+  cfmhdr = CFMHDR(data);
   md_level_received = GET_MD_LEVEL(cfmhdr);
 
   syslog(LOG_INFO,
          "rcvd DMM: "
-         "%02x:%02x:%02x:%02x:%02x:%02x, level %d mepid %d",
+         "%02x:%02x:%02x:%02x:%02x:%02x, level %d",
          encap->srcmac[0], encap->srcmac[1], encap->srcmac[2], encap->srcmac[3],
-         encap->srcmac[4], encap->srcmac[5], md_level_received,
-         ntohs(cfm_cc->mepid));
+         encap->srcmac[4], encap->srcmac[5], md_level_received);
 
   if (md_level_received != md_level) {
     syslog(LOG_ERR, "expected level %d, received level %d, discard frame\n",
@@ -286,6 +283,20 @@ void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
 
     return;
   }
+
+  dmm_frame = POS_CFM_DMM(data);
+
+  /* Convert timestamps from network byte order and log them */
+  uint32_t ts_T1 = ntohl(dmm_frame->timestamp_T1);
+  uint32_t ts_T2 = ntohl(dmm_frame->timestamp_T2);
+  uint32_t ts_T3 = ntohl(dmm_frame->timestamp_T3);
+  uint32_t ts_reserved = ntohl(dmm_frame->reserved);
+
+  syslog(LOG_INFO, "DMM Timestamps:");
+  syslog(LOG_INFO, "  Timestamp T1: %u", ts_T1);
+  syslog(LOG_INFO, "  Timestamp T2: %u", ts_T2);
+  syslog(LOG_INFO, "  Timestamp T3: %u", ts_T3);
+  syslog(LOG_INFO, "  Reserved for DMR receiving equipment: %u", ts_reserved);
 }
 
 int processDMMOld(char *ifname, char *md, uint8_t *dmm_frame) {

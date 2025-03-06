@@ -205,6 +205,8 @@ struct cfm_lbm {
 
 #define POS_CFM_CC(s) (struct cfm_cc *)(CFMHDR_U8((s), sizeof(struct cfmhdr)))
 
+#define POS_CFM_DMM(s) (struct cfm_dmm *)(CFMHDR_U8((s), sizeof(struct cfmhdr)))
+
 #define POS_CFM_CC_TLVS(s)                                                     \
   (uint8_t *)(CFMHDR_U8((s), sizeof(struct cfmhdr) + sizeof(struct cfm_cc)))
 
@@ -334,3 +336,11 @@ struct rMEP {
   int tlv_ps; /* TLV Port Status */
   int tlv_is; /* TLV Interface Status */
 };
+
+struct cfm_dmm {
+  uint32_t timestamp_T1; // Bytes 4-7: Timestamp T1
+  uint32_t timestamp_T2; // Bytes 8-11: Reserved for DMM receiving equipment
+                         // (for Timestamp T2)
+  uint32_t timestamp_T3; // Bytes 12-15: Reserved for DMR (for Timestamp T3)
+  uint32_t reserved;     // Bytes 16-19: Reserved for DMR receiving equipment
+} __attribute__((__packed__));
