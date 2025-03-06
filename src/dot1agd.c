@@ -57,6 +57,7 @@ int main(int argc, char **argv) {
   int ch;
   char *ifname = NULL;
   uint8_t md_level = 0;
+  uint16_t mep_id = 0;
   uint8_t localmac[ETHER_ADDR_LEN];
   struct bpf_program filter; /* compiled BPF filter */
   char filter_src[1024];
@@ -65,7 +66,7 @@ int main(int argc, char **argv) {
   struct sigaction act;
 
   /* parse command line options */
-  while ((ch = getopt(argc, argv, "hi:l:v:c:d:")) != -1) {
+  while ((ch = getopt(argc, argv, "hi:l:v:c:d:m")) != -1) {
     switch (ch) {
     case 'h':
       usage();
@@ -75,6 +76,9 @@ int main(int argc, char **argv) {
       break;
     case 'd':
       md_level = atoi(optarg);
+      break;
+    case 'm':
+      mep_id = atoi(optarg);
       break;
     case '?':
     default:
@@ -91,6 +95,18 @@ int main(int argc, char **argv) {
   if (ifname == NULL) {
     usage();
   }
+
+  /*
+  if (md_level < 0 || md_level > 7) {
+    fprintf(stderr, "MD level should be in range 0-7\n");
+    exit(EXIT_FAILURE);
+  }
+
+  if (mep_id < 1 || mep_id > 8191) {
+    fprintf(stderr, "MEPID should be in range 1-8191\n");
+    exit(EXIT_FAILURE);
+  }
+  */
   /* command line argument parsing finished */
 
   /* get Ethernet address of outgoing interface */
@@ -174,7 +190,7 @@ int main(int argc, char **argv) {
         break;
       case OAM_DMM:
         syslog(LOG_INFO, "Received Delay Measurement Message");
-        processDMM(ifname, md_level, (uint8_t *)data);
+        processDMM(ifname, md_level, mep_id, (uint8_t *)data);
         break;
       default:
         syslog(LOG_ERR, "Received unknown CFM opcode %d", cfmhdr->opcode);
@@ -191,6 +207,8 @@ int main(int argc, char **argv) {
 }
 
 static void usage() {
-  fprintf(stderr, "usage: dot1agd -i interface [-m <maintenance_domain>]\n");
+  fprintf(
+      stderr,
+      "usage: dot1agd -i interface [-m <maintenance_domain>] [-d <mep_id]\n");
   exit(EXIT_FAILURE);
 }

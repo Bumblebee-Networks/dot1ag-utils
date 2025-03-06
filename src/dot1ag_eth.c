@@ -35,6 +35,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/syslog.h>
 #include <syslog.h>
 #include <time.h>
 #include <unistd.h>
@@ -247,11 +248,14 @@ void print_ltr(uint8_t *buf) {
   }
 }
 
-int processDMM(char *ifname, uint8_t md_level, uint8_t *dmm_frame) {
+void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
+                uint8_t *dmm_frame) {
 
   uint8_t local_mac[ETHER_ADDR_LEN];
   struct cfmencap *encap;
   struct cfmhdr *cfmhdr;
+  struct cfm_cc *cfm_cc;
+  uint8_t md_level_received;
 
   if (get_local_mac(ifname, local_mac) != 0) {
     fprintf(stderr, "Cannot determine local MAC address\n");
@@ -261,16 +265,27 @@ int processDMM(char *ifname, uint8_t md_level, uint8_t *dmm_frame) {
   encap = (struct cfmencap *)dmm_frame;
 
   if (ETHER_IS_EQUAL(encap->srcmac, local_mac)) {
-    return 0;
+    return;
   }
 
+  cfm_cc = POS_CFM_CC(dmm_frame);
+
   cfmhdr = CFMHDR(dmm_frame);
+  md_level_received = GET_MD_LEVEL(cfmhdr);
+
   syslog(LOG_INFO,
          "rcvd DMM: "
-         "%02x:%02x:%02x:%02x:%02x:%02x, level %d",
+         "%02x:%02x:%02x:%02x:%02x:%02x, level %d mepid %d",
          encap->srcmac[0], encap->srcmac[1], encap->srcmac[2], encap->srcmac[3],
-         encap->srcmac[4], encap->srcmac[5], GET_MD_LEVEL(cfmhdr));
-  return 0;
+         encap->srcmac[4], encap->srcmac[5], md_level_received,
+         ntohs(cfm_cc->mepid));
+
+  if (md_level_received != md_level) {
+    syslog(LOG_ERR, "expected level %d, received level %d, discard frame\n",
+           md_level, md_level_received);
+
+    return;
+  }
 }
 
 int processDMMOld(char *ifname, char *md, uint8_t *dmm_frame) {
@@ -317,9 +332,9 @@ int processDMMOld(char *ifname, char *md, uint8_t *dmm_frame) {
      Use ntohl() to convert from network byte order to host byte order. */
   uint32_t timestamp_T1 =
       ntohl(*(uint32_t *)(msg + 4)); // Bytes 4-7: Timestamp T1
-  uint32_t timestamp_T2 = ntohl(*(
-      uint32_t *)(msg +
-                  8)); // Bytes 8-11: Reserved for DMM receiving (Timestamp T2)
+  uint32_t timestamp_T2 =
+      ntohl(*(uint32_t *)(msg + 8)); // Bytes 8-11: Reserved for DMM receiving
+                                     // (Timestamp T2)
   uint32_t timestamp_T3 = ntohl(
       *(uint32_t *)(msg + 12)); // Bytes 12-15: Reserved for DMR (Timestamp T3)
   uint32_t reserved_dmr_recv = ntohl(
