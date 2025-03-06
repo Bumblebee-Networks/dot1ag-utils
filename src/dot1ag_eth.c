@@ -322,6 +322,13 @@ void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
 
   dmr_hdr->timestamp_T1 = dmm_hdr->timestamp_T1;
 
+  struct timeval tv;
+  gettimeofday(&tv, NULL);
+  dmr_hdr->timestamp_T2 = htonl((uint32_t)tv.tv_sec);
+
+  gettimeofday(&tv, NULL);
+  dmr_hdr->timestamp_T3 = htonl((uint32_t)tv.tv_sec);
+
   /* Convert timestamps from network byte order and log them */
   uint32_t tsr_T1 = ntohl(dmr_hdr->timestamp_T1);
   uint32_t tsr_T2 = ntohl(dmr_hdr->timestamp_T2);
