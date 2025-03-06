@@ -2,17 +2,17 @@
  * Copyright (c) 2011
  * Author: Ronald van der Pol
  * All rights reserved.
- *
+ * 
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
  * are met:
- *
+ * 
  *    1. Redistributions of source code must retain the above copyright
  *       notice, this list of conditions and the following disclaimer.
  *    2. Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *
+ * 
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
  * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
@@ -28,187 +28,158 @@
 
 #include "config.h"
 
-#include <signal.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <syslog.h>
 #include <time.h>
+#include <signal.h>
 #include <unistd.h>
+#include <sys/socket.h>
 
-#include "dot1ag_eth.h"
 #include "ieee8021ag.h"
+#include "dot1ag_eth.h"
 
 #include <pcap.h>
 
-#define INTERVAL 1
+#define INTERVAL	1
 
 pcap_t *handle;
 
 static void usage(void);
 
-static void timeout_handler(int sig) {
-  pcap_breakloop(handle); /* XXX is this needed? */
+static void
+timeout_handler(int sig) {
+	pcap_breakloop(handle);   /* XXX is this needed? */
 }
 
-int main(int argc, char **argv) {
-  int ch;
-  char *ifname = NULL;
-  uint8_t md_level = 0;
-  uint16_t mep_id = 0;
-  uint8_t localmac[ETHER_ADDR_LEN];
-  struct bpf_program filter; /* compiled BPF filter */
-  char filter_src[1024];
-  char errbuf[PCAP_ERRBUF_SIZE];
-  struct itimerval tval;
-  struct sigaction act;
 
-  /* parse command line options */
-  while ((ch = getopt(argc, argv, "hi:l:v:c:d:m")) != -1) {
-    switch (ch) {
-    case 'h':
-      usage();
-      exit(EXIT_SUCCESS);
-    case 'i':
-      ifname = optarg;
-      break;
-    case 'd':
-      md_level = atoi(optarg);
-      break;
-    case 'm':
-      mep_id = atoi(optarg);
-      break;
-    case '?':
-    default:
-      usage();
-      exit(EXIT_FAILURE);
-    }
-  }
+int
+main(int argc, char **argv) {
+	int ch;
+	char *ifname = NULL;
+	uint8_t localmac[ETHER_ADDR_LEN];
+	struct bpf_program filter;  /* compiled BPF filter */
+	char filter_src[1024];
+	char errbuf[PCAP_ERRBUF_SIZE];
+	struct itimerval tval;
+	struct sigaction act;
 
-  if (argc - optind != 0) {
-    usage();
-  }
+	/* parse command line options */
+	while ((ch = getopt(argc, argv, "hi:l:v:c:")) != -1) {
+		switch(ch) {
+		case 'h':
+			usage();
+			break;
+		case 'i':
+			ifname = optarg;
+			break;
+		case '?':
+		default:
+			usage();
+		}
+	}
+	if (argc - optind != 0) {
+		usage();
+	}
 
-  /* check for mandatory '-i' flag */
-  if (ifname == NULL) {
-    usage();
-  }
+	/* check for mandatory '-i' flag */
+	if (ifname == NULL) {
+		usage();
+	}
+	/* command line argument parsing finished */
 
-  /*
-  if (md_level < 0 || md_level > 7) {
-    fprintf(stderr, "MD level should be in range 0-7\n");
-    exit(EXIT_FAILURE);
-  }
+	/* get Ethernet address of outgoing interface */
+	if (get_local_mac(ifname, localmac) != 0) {
+		perror(ifname);
+		exit(EXIT_FAILURE);
+	}
 
-  if (mep_id < 1 || mep_id > 8191) {
-    fprintf(stderr, "MEPID should be in range 1-8191\n");
-    exit(EXIT_FAILURE);
-  }
-  */
-  /* command line argument parsing finished */
+	/* open pcap device for listening */
+	handle = pcap_open_live(ifname, BUFSIZ, 1, 100, errbuf);
+	if (handle == NULL) {
+		perror(errbuf);
+		exit(EXIT_FAILURE);
+	}
 
-  /* get Ethernet address of outgoing interface */
-  if (get_local_mac(ifname, localmac) != 0) {
-    perror(ifname);
-    exit(EXIT_FAILURE);
-  }
+	/* Compile and apply the filter */
 
-  /* open pcap device for listening */
-  handle = pcap_open_live(ifname, BUFSIZ, 1, 100, errbuf);
-  if (handle == NULL) {
-    perror(errbuf);
-    exit(EXIT_FAILURE);
-  }
+	/*
+	 * Filter to receive CFM frames (Ethertype 0x8902) only.
+	 * Filter on both untagged (ether[12:2]) or 802.1Q tagged
+	 * (ether[16:2]) frames.
+	 */
+	sprintf(filter_src, "ether[12:2] == 0x%x or "
+		"(ether[12:2] == 0x%x and ether[16:2] == 0x%x)",
+		ETYPE_CFM, ETYPE_8021Q, ETYPE_CFM);
+	pcap_compile(handle, &filter, filter_src, 0, 0);
+	pcap_setfilter(handle, &filter);
 
-  /* Compile and apply the filter */
+	 /* define signal handler */
+	act.sa_handler = &timeout_handler;
+	sigemptyset(&act.sa_mask);
+	act.sa_flags = 0;
+	if (sigaction(SIGALRM, &act, NULL) == -1) {
+		perror("sigaction");
+		exit(EXIT_FAILURE);
+	}
 
-  /*
-   * Filter to receive CFM frames (Ethertype 0x8902) only.
-   * Filter on both untagged (ether[12:2]) or 802.1Q tagged
-   * (ether[16:2]) frames.
-   */
-  sprintf(filter_src,
-          "ether[12:2] == 0x%x or "
-          "(ether[12:2] == 0x%x and ether[16:2] == 0x%x)",
-          ETYPE_CFM, ETYPE_8021Q, ETYPE_CFM);
-  pcap_compile(handle, &filter, filter_src, 0, 0);
-  pcap_setfilter(handle, &filter);
+	/* set timer to INTERVAL seconds */
+	tval.it_interval.tv_usec = 0;
+	tval.it_interval.tv_sec = 1;
+	tval.it_value.tv_usec = 0;
+	tval.it_value.tv_sec = 1;
+	if (setitimer(ITIMER_REAL, &tval, NULL) < 0) {
+		perror("setitimer");
+		exit(EXIT_FAILURE);
+	}
 
-  /* define signal handler */
-  act.sa_handler = &timeout_handler;
-  sigemptyset(&act.sa_mask);
-  act.sa_flags = 0;
-  if (sigaction(SIGALRM, &act, NULL) == -1) {
-    perror("sigaction");
-    exit(EXIT_FAILURE);
-  }
+	printf("Listening on interface %s for CFM frames\n", ifname);
 
-  /* set timer to INTERVAL seconds */
-  tval.it_interval.tv_usec = 0;
-  tval.it_interval.tv_sec = 1;
-  tval.it_value.tv_usec = 0;
-  tval.it_value.tv_sec = 1;
-  if (setitimer(ITIMER_REAL, &tval, NULL) < 0) {
-    perror("setitimer");
-    exit(EXIT_FAILURE);
-  }
+	/* listen for CFM frames */
+	while (1) {
+		int n;
+		struct cfmhdr *cfmhdr;
+		struct pcap_pkthdr *header;     /* header returned by pcap */
+		const u_char *data;
 
-  openlog("dot1agd", LOG_PID | LOG_CONS, LOG_USER);
-  syslog(LOG_INFO, "Service starting...");
-  syslog(LOG_INFO, "Listening on interface %s for CFM frames", ifname);
+		/*
+		 * Wait for a CFM frames.
+		 */
+		n = pcap_next_ex(handle, &header, &data);
+		switch (n) {
+		case -1:
+			pcap_perror(handle, "pcap_next_ex");
+			break;
+		case 0:
+			break;
+		case 1:
+			cfmhdr = CFMHDR(data);
+			switch (cfmhdr->opcode) {
+			case CFM_CCM:
+				break;
+			case CFM_LBM:
+				cfm_send_lbr(ifname, (uint8_t *) data,
+						(int) header->caplen);
+				break;
+			case CFM_LTM:
+				/* Linktrace Responder */
+				processLTM(ifname, (uint8_t *) data);
+				break;
+			default:
+				break;
+			}
+			break;
+		default:
+			break;
+		}
+	}
 
-  /* listen for CFM frames */
-  while (1) {
-    int n;
-    struct cfmhdr *cfmhdr;
-    struct pcap_pkthdr *header; /* header returned by pcap */
-    const u_char *data;
-
-    /*
-     * Wait for a CFM frames.
-     */
-    n = pcap_next_ex(handle, &header, &data);
-    switch (n) {
-    case -1:
-      pcap_perror(handle, "pcap_next_ex");
-      break;
-    case 0:
-      break;
-    case 1:
-      cfmhdr = CFMHDR(data);
-      switch (cfmhdr->opcode) {
-      case CFM_CCM:
-        break;
-      case CFM_LBM:
-        cfm_send_lbr(ifname, (uint8_t *)data, (int)header->caplen);
-        break;
-      case CFM_LTM:
-        /* Linktrace Responder */
-        processLTM(ifname, (uint8_t *)data);
-        break;
-      case OAM_DMM:
-        syslog(LOG_INFO, "Received Delay Measurement Message");
-        processDMM(ifname, md_level, mep_id, (uint8_t *)data);
-        break;
-      default:
-        syslog(LOG_ERR, "Received unknown CFM opcode %d", cfmhdr->opcode);
-        break;
-      }
-      break;
-    default:
-      break;
-    }
-  }
-  syslog(LOG_INFO, "Service stopping...");
-  closelog();
-  exit(EXIT_SUCCESS);
+	exit(EXIT_SUCCESS);
 }
 
-static void usage() {
-  fprintf(
-      stderr,
-      "usage: dot1agd -i interface [-m <maintenance_domain>] [-d <mep_id]\n");
-  exit(EXIT_FAILURE);
+static void
+usage() {
+	fprintf(stderr, "usage: dot1agd -i interface\n");
+	exit(EXIT_FAILURE);
 }
