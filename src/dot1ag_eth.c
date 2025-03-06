@@ -35,6 +35,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <syslog.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -245,7 +246,105 @@ void print_ltr(uint8_t *buf) {
     printf(", RlyUknown\n");
   }
 }
-int processDMM(char *ifname, char *md) { return 0; }
+
+int processDMM(char *ifname, char *md, uint8_t *dmm_frame) {
+
+  uint8_t local_mac[ETHER_ADDR_LEN];
+  struct cfmencap *encap;
+  struct cfmhdr *cfmhdr;
+
+  if (get_local_mac(ifname, local_mac) != 0) {
+    fprintf(stderr, "Cannot determine local MAC address\n");
+    exit(EXIT_FAILURE);
+  }
+
+  encap = (struct cfmencap *)dmm_frame;
+
+  if (ETHER_IS_EQUAL(encap->srcmac, local_mac)) {
+    return 0;
+  }
+
+  cfmhdr = CFMHDR(dmm_frame);
+  syslog(LOG_INFO,
+         "rcvd DMM: "
+         "%02x:%02x:%02x:%02x:%02x:%02x, level %d",
+         encap->srcmac[0], encap->srcmac[1], encap->srcmac[2], encap->srcmac[3],
+         encap->srcmac[4], encap->srcmac[5], GET_MD_LEVEL(cfmhdr));
+  return 0;
+}
+
+int processDMMOld(char *ifname, char *md, uint8_t *dmm_frame) {
+  uint8_t local_mac[ETHER_ADDR_LEN];
+  struct ether_header *eth_hdr;
+  uint8_t *msg; // Pointer to the DMM message header within the frame
+
+  /* Retrieve the local MAC address */
+  if (get_local_mac(ifname, local_mac) != 0) {
+    syslog(LOG_ERR, "Cannot determine local MAC address for interface %s",
+           ifname);
+    exit(EXIT_FAILURE);
+  }
+
+  /* Parse Ethernet header and log Ethernet addresses */
+  eth_hdr = (struct ether_header *)dmm_frame;
+  syslog(LOG_INFO,
+         "Processing DMM message on interface: %s, Maintenance Domain: %s",
+         ifname, md);
+  syslog(LOG_INFO, "Local MAC: %02x:%02x:%02x:%02x:%02x:%02x", local_mac[0],
+         local_mac[1], local_mac[2], local_mac[3], local_mac[4], local_mac[5]);
+  syslog(LOG_INFO, "Ethernet Source MAC: %02x:%02x:%02x:%02x:%02x:%02x",
+         eth_hdr->ether_shost[0], eth_hdr->ether_shost[1],
+         eth_hdr->ether_shost[2], eth_hdr->ether_shost[3],
+         eth_hdr->ether_shost[4], eth_hdr->ether_shost[5]);
+  syslog(LOG_INFO, "Ethernet Destination MAC: %02x:%02x:%02x:%02x:%02x:%02x",
+         eth_hdr->ether_dhost[0], eth_hdr->ether_dhost[1],
+         eth_hdr->ether_dhost[2], eth_hdr->ether_dhost[3],
+         eth_hdr->ether_dhost[4], eth_hdr->ether_dhost[5]);
+
+  /* The DMM message header follows after the Ethernet header */
+  msg = dmm_frame + ETHER_HDR_LEN;
+
+  /* Extract fields from the first 4 bytes */
+  uint8_t md_level = msg[0] >> 4;  // Upper 4 bits of byte 0
+  uint8_t version = msg[0] & 0x0F; // Lower 4 bits of byte 0
+  uint8_t opcode = msg[1];         // Byte 1: OpCode
+  uint8_t reserved = msg[2];       // Byte 2: Reserved (should be 0)
+  uint8_t t_bit = msg[3] >> 7;     // Bit 7 of byte 3: T bit
+  uint8_t first_tlv_offset =
+      msg[3] & 0x7F; // Bits 0-6 of byte 3: First TLV Offset
+
+  /* Extract 32-bit values from the subsequent bytes.
+     Use ntohl() to convert from network byte order to host byte order. */
+  uint32_t timestamp_T1 =
+      ntohl(*(uint32_t *)(msg + 4)); // Bytes 4-7: Timestamp T1
+  uint32_t timestamp_T2 = ntohl(*(
+      uint32_t *)(msg +
+                  8)); // Bytes 8-11: Reserved for DMM receiving (Timestamp T2)
+  uint32_t timestamp_T3 = ntohl(
+      *(uint32_t *)(msg + 12)); // Bytes 12-15: Reserved for DMR (Timestamp T3)
+  uint32_t reserved_dmr_recv = ntohl(
+      *(uint32_t *)(msg +
+                    16)); // Bytes 16-19: Reserved for DMR receiving equipment
+
+  /* Log the parsed DMM header fields via syslog */
+  syslog(LOG_INFO, "DMM Header Fields:");
+  syslog(LOG_INFO, "  MD-L (Maintenance Domain Level): %u", md_level);
+  syslog(LOG_INFO, "  Version: %u", version);
+  syslog(LOG_INFO, "  OpCode: %u", opcode);
+  syslog(LOG_INFO, "  Reserved (byte 2): %u", reserved);
+  syslog(LOG_INFO, "  T Bit: %u", t_bit);
+  syslog(LOG_INFO, "  First TLV Offset: %u", first_tlv_offset);
+  syslog(LOG_INFO, "  Timestamp T1: %u", timestamp_T1);
+  syslog(LOG_INFO, "  Timestamp T2 (Reserved for DMM receiving): %u",
+         timestamp_T2);
+  syslog(LOG_INFO, "  Timestamp T3 (Reserved for DMR): %u", timestamp_T3);
+  syslog(LOG_INFO, "  Reserved for DMR receiving equipment: %u",
+         reserved_dmr_recv);
+
+  /* Additional processing of TLVs could be added here */
+
+  return 0;
+}
 
 int cfm_send_lbr(char *ifname, uint8_t *lbm_frame, int size) {
   uint8_t lbr_frame[ETHER_MAX_LEN];
