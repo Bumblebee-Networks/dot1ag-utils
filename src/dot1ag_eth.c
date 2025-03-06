@@ -308,7 +308,7 @@ void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
 
   memset(dmr_frame, 0, sizeof(dmr_frame));
 
-  memcpy(dmm_frame, dmr_frame, size);
+  memcpy(dmr_frame, dmm_frame, size);
 
   for (i = 0; i < ETHER_ADDR_LEN; i++) {
     dmr_ehdr->ether_shost[i] = local_mac[i];
@@ -340,6 +340,11 @@ void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
   syslog(LOG_INFO, "  Timestamp T2: %u", tsr_T2);
   syslog(LOG_INFO, "  Timestamp T3: %u", tsr_T3);
   syslog(LOG_INFO, "  Reserved for DMR receiving equipment: %u", tsr_reserved);
+
+  if (send_packet(ifname, dmr_frame, size) < 0) {
+    perror("send_packet");
+    exit(EXIT_FAILURE);
+  }
 }
 
 int cfm_send_lbr(char *ifname, uint8_t *lbm_frame, int size) {
