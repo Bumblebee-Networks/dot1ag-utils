@@ -311,9 +311,8 @@ void logDM_packet(uint8_t *dm_frame, int size, int opcode) {
 }
 
 void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
-                uint8_t *dmm_frame, int size, int verbose) {
+                uint8_t *dmm_frame, int size, uint8_t *local_mac, int verbose) {
 
-  uint8_t local_mac[ETHER_ADDR_LEN];
   struct cfmencap *encap;
   struct cfmhdr *cfmhdr;
   struct cfm_dm *dmr_hdr;
@@ -327,11 +326,6 @@ void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
 
   if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
     perror("clock_gettime");
-    exit(EXIT_FAILURE);
-  }
-
-  if (get_local_mac(ifname, local_mac) != 0) {
-    fprintf(stderr, "Cannot determine local MAC address\n");
     exit(EXIT_FAILURE);
   }
 

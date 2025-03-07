@@ -425,7 +425,7 @@ int main(int argc, char **argv) {
         break;
       case OAM_DMM:
         processDMM(ifname, mdLevel, mepid, (uint8_t *)data,
-                   (int)pcap_hdr->caplen, verbose);
+                   (int)pcap_hdr->caplen, localmac, verbose);
         break;
       default:
         break;
