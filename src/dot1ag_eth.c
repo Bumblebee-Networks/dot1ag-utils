@@ -252,6 +252,8 @@ void print_ltr(uint8_t *buf) {
 void logDM_packet(uint8_t *dm_frame, int size, int opcode) {
   const char *pkt_type_str = (opcode == OAM_DMR) ? "DMR" : "DMM";
   struct ether_header *eth_hdr = (struct ether_header *)dm_frame;
+  struct cfm_dm *dm;
+
   syslog(LOG_INFO, "=== %s Packet ===", pkt_type_str);
   syslog(LOG_INFO, "Ethernet Header:");
   syslog(LOG_INFO, "  Source MAC: %02x:%02x:%02x:%02x:%02x:%02x",
@@ -277,8 +279,6 @@ void logDM_packet(uint8_t *dm_frame, int size, int opcode) {
   uint8_t first_tlv_offset = cfm_hdr->tlv_offset & 0x7F;
   syslog(LOG_INFO, "  T bit: %u", t_bit);
   syslog(LOG_INFO, "  First TLV Offset: %u", first_tlv_offset);
-
-  struct cfm_dm *dm;
 
   dm = POS_CFM_DM(dm_frame);
 
