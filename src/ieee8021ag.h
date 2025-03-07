@@ -191,6 +191,7 @@ struct cfm_lbm {
 
 /* return the MD Level in a struct cfmhdr */
 #define GET_MD_LEVEL(s) (((s)->octet1.md_level >> 5) & 0x07)
+#define GET_VERSION(s) ((s)->octet1.version & 0x1F)
 
 /* positions of headers in Ethernet frame */
 #define IS_TAGGED(s) (*(s + ETHER_ADDR_LEN * 2) == htons(ETYPE_8021Q))
