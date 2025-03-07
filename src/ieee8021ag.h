@@ -338,10 +338,16 @@ struct rMEP {
   int tlv_is; /* TLV Interface Status */
 };
 
+/* Delay Measurement Message */
+
+struct timestamp {
+  uint32_t seconds;
+  uint32_t nanoseconds;
+} __attribute__((__packed__));
+
 struct cfm_dm {
-  uint32_t timestamp_T1; // Bytes 4-7: Timestamp T1
-  uint32_t timestamp_T2; // Bytes 8-11: Reserved for DMM receiving equipment
-                         // (for Timestamp T2)
-  uint32_t timestamp_T3; // Bytes 12-15: Reserved for DMR (for Timestamp T3)
-  uint32_t reserved;     // Bytes 16-19: Reserved for DMR receiving equipment
+  struct timestamp T1; // 8 bytes: 4 for seconds, 4 for nanoseconds
+  struct timestamp T2; // 8 bytes
+  struct timestamp T3; // 8 bytes
+  struct timestamp T4; // 8 bytes
 } __attribute__((__packed__));
