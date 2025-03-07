@@ -248,6 +248,70 @@ void print_ltr(uint8_t *buf) {
   }
 }
 
+/* Function to log the complete DMM packet fields to syslog */
+void logDMM_packet(uint8_t *dmm_frame, int size) {
+  /* dmm_frame is assumed to include the Ethernet header */
+  struct ether_header *eth_hdr = (struct ether_header *)dmm_frame;
+  syslog(LOG_INFO, "=== DMM Packet ===");
+  syslog(LOG_INFO, "Ethernet Header:");
+  syslog(LOG_INFO, "  Source MAC: %02x:%02x:%02x:%02x:%02x:%02x",
+         eth_hdr->ether_shost[0], eth_hdr->ether_shost[1],
+         eth_hdr->ether_shost[2], eth_hdr->ether_shost[3],
+         eth_hdr->ether_shost[4], eth_hdr->ether_shost[5]);
+  syslog(LOG_INFO, "  Destination MAC: %02x:%02x:%02x:%02x:%02x:%02x",
+         eth_hdr->ether_dhost[0], eth_hdr->ether_dhost[1],
+         eth_hdr->ether_dhost[2], eth_hdr->ether_dhost[3],
+         eth_hdr->ether_dhost[4], eth_hdr->ether_dhost[5]);
+
+  /* Parse the common CFM header (immediately following the Ethernet header) */
+  struct cfmhdr *cfm_hdr = (struct cfmhdr *)(dmm_frame + ETHER_HDR_LEN);
+  syslog(LOG_INFO, "CFM Header:");
+  syslog(LOG_INFO, "  MD-L: %u", GET_MD_LEVEL(cfm_hdr));
+  syslog(LOG_INFO, "  Version: %u", GET_VERSION(cfm_hdr));
+  syslog(LOG_INFO, "  OpCode: %u", cfm_hdr->opcode);
+  syslog(LOG_INFO, "  Reserved/Flags: %u", cfm_hdr->flags);
+  syslog(LOG_INFO, "  Raw TLV Offset byte: %u", cfm_hdr->tlv_offset);
+
+  /* Extract the T bit and First TLV Offset from the tlv_offset byte */
+  uint8_t t_bit = cfm_hdr->tlv_offset >> 7;
+  uint8_t first_tlv_offset = cfm_hdr->tlv_offset & 0x7F;
+  syslog(LOG_INFO, "  T bit: %u", t_bit);
+  syslog(LOG_INFO, "  First TLV Offset: %u", first_tlv_offset);
+
+  /* Parse the DMM-specific information that follows the common header */
+  struct cfm_dm *dmm;
+
+  dmm = POS_CFM_DM(dmm_frame);
+
+  uint32_t T1 = ntohl(dmm->timestamp_T1);
+  uint32_t T2 = ntohl(dmm->timestamp_T2);
+  uint32_t T3 = ntohl(dmm->timestamp_T3);
+  uint32_t reserved = ntohl(dmm->reserved);
+  syslog(LOG_INFO, "DMM Specific Information:");
+  syslog(LOG_INFO, "  Timestamp T1: %u", T1);
+  syslog(LOG_INFO, "  Timestamp T2: %u", T2);
+  syslog(LOG_INFO, "  Timestamp T3: %u", T3);
+  syslog(LOG_INFO, "  Reserved for DMR receiving equipment: %u", reserved);
+
+  /* If TLVs are present, log their length and a hex dump of the raw TLV data */
+  int header_len =
+      ETHER_HDR_LEN + sizeof(struct cfmhdr) + sizeof(struct cfm_dm);
+  if (size > header_len) {
+    int tlv_len = size - header_len;
+    syslog(LOG_INFO, "TLVs present: %d bytes", tlv_len);
+    char tlv_buf[256] = {0};
+    int pos = 0;
+    uint8_t *tlv_ptr = dmm_frame + header_len;
+    for (int i = 0; i < tlv_len && pos < (int)(sizeof(tlv_buf) - 3); i++) {
+      pos +=
+          snprintf(tlv_buf + pos, sizeof(tlv_buf) - pos, "%02x ", tlv_ptr[i]);
+    }
+    syslog(LOG_INFO, "TLV Data: %s", tlv_buf);
+  } else {
+    syslog(LOG_INFO, "No TLVs present in the DMM packet");
+  }
+}
+
 void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
                 uint8_t *dmm_frame, int size, int verbose) {
 
@@ -283,12 +347,7 @@ void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
   version = GET_VERSION(cfmhdr);
 
   if (verbose) {
-    syslog(LOG_INFO,
-           "rcvd DMM: "
-           "%02x:%02x:%02x:%02x:%02x:%02x, level %d version %d size %d",
-           encap->srcmac[0], encap->srcmac[1], encap->srcmac[2],
-           encap->srcmac[3], encap->srcmac[4], encap->srcmac[5],
-           md_level_received, version, size);
+    logDMM_packet(dmm_frame, size);
   }
 
   if (md_level_received != md_level) {
