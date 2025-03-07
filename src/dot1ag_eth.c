@@ -323,8 +323,6 @@ void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
   struct ether_header *dmr_ehdr;
   int i;
 
-  verbose = 1;
-
   struct timespec ts;
 
   if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
