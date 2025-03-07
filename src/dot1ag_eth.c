@@ -248,11 +248,11 @@ void print_ltr(uint8_t *buf) {
   }
 }
 
-/* Function to log the complete DMM packet fields to syslog */
-void logDMM_packet(uint8_t *dmm_frame, int size) {
-  /* dmm_frame is assumed to include the Ethernet header */
-  struct ether_header *eth_hdr = (struct ether_header *)dmm_frame;
-  syslog(LOG_INFO, "=== DMM Packet ===");
+/* Function to log a delay measurement packet fields to syslog */
+void logDM_packet(uint8_t *dm_frame, int size, int opcode) {
+  const char *pkt_type_str = (opcode == OAM_DMR) ? "DMR" : "DMM";
+  struct ether_header *eth_hdr = (struct ether_header *)dm_frame;
+  syslog(LOG_INFO, "=== %s Packet ===", pkt_type_str);
   syslog(LOG_INFO, "Ethernet Header:");
   syslog(LOG_INFO, "  Source MAC: %02x:%02x:%02x:%02x:%02x:%02x",
          eth_hdr->ether_shost[0], eth_hdr->ether_shost[1],
@@ -264,7 +264,7 @@ void logDMM_packet(uint8_t *dmm_frame, int size) {
          eth_hdr->ether_dhost[4], eth_hdr->ether_dhost[5]);
 
   /* Parse the common CFM header (immediately following the Ethernet header) */
-  struct cfmhdr *cfm_hdr = (struct cfmhdr *)(dmm_frame + ETHER_HDR_LEN);
+  struct cfmhdr *cfm_hdr = (struct cfmhdr *)(dm_frame + ETHER_HDR_LEN);
   syslog(LOG_INFO, "CFM Header:");
   syslog(LOG_INFO, "  MD-L: %u", GET_MD_LEVEL(cfm_hdr));
   syslog(LOG_INFO, "  Version: %u", GET_VERSION(cfm_hdr));
@@ -278,16 +278,14 @@ void logDMM_packet(uint8_t *dmm_frame, int size) {
   syslog(LOG_INFO, "  T bit: %u", t_bit);
   syslog(LOG_INFO, "  First TLV Offset: %u", first_tlv_offset);
 
-  /* Parse the DMM-specific information that follows the common header */
-  struct cfm_dm *dmm;
+  struct cfm_dm *dm;
 
-  dmm = POS_CFM_DM(dmm_frame);
+  dm = POS_CFM_DM(dm_frame);
 
-  uint32_t T1 = ntohl(dmm->timestamp_T1);
-  uint32_t T2 = ntohl(dmm->timestamp_T2);
-  uint32_t T3 = ntohl(dmm->timestamp_T3);
-  uint32_t reserved = ntohl(dmm->reserved);
-  syslog(LOG_INFO, "DMM Specific Information:");
+  uint32_t T1 = ntohl(dm->timestamp_T1);
+  uint32_t T2 = ntohl(dm->timestamp_T2);
+  uint32_t T3 = ntohl(dm->timestamp_T3);
+  uint32_t reserved = ntohl(dm->reserved);
   syslog(LOG_INFO, "  Timestamp T1: %u", T1);
   syslog(LOG_INFO, "  Timestamp T2: %u", T2);
   syslog(LOG_INFO, "  Timestamp T3: %u", T3);
@@ -301,7 +299,7 @@ void logDMM_packet(uint8_t *dmm_frame, int size) {
     syslog(LOG_INFO, "TLVs present: %d bytes", tlv_len);
     char tlv_buf[256] = {0};
     int pos = 0;
-    uint8_t *tlv_ptr = dmm_frame + header_len;
+    uint8_t *tlv_ptr = dm_frame + header_len;
     for (int i = 0; i < tlv_len && pos < (int)(sizeof(tlv_buf) - 3); i++) {
       pos +=
           snprintf(tlv_buf + pos, sizeof(tlv_buf) - pos, "%02x ", tlv_ptr[i]);
@@ -320,7 +318,6 @@ void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
   struct cfmhdr *cfmhdr;
   struct cfm_dm *dmr_hdr;
   uint8_t md_level_received;
-  uint8_t version;
   uint8_t dmr_frame[ETHER_MAX_LEN];
   struct ether_header *dmm_ehdr;
   struct ether_header *dmr_ehdr;
@@ -344,10 +341,9 @@ void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
 
   cfmhdr = CFMHDR(dmm_frame);
   md_level_received = GET_MD_LEVEL(cfmhdr);
-  version = GET_VERSION(cfmhdr);
 
   if (verbose) {
-    logDMM_packet(dmm_frame, size);
+    logDM_packet(dmm_frame, size, OAM_DMM);
   }
 
   if (md_level_received != md_level) {
@@ -375,18 +371,7 @@ void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
   dmr_hdr->timestamp_T3 = htonl((uint32_t)tv.tv_sec);
 
   if (verbose) {
-    version = GET_VERSION(cfmhdr);
-    syslog(LOG_INFO, "DMR Timestamps:");
-    syslog(LOG_INFO, "  Timestamp T1: %u", ntohl(dmr_hdr->timestamp_T1));
-    syslog(LOG_INFO, "  Timestamp T2: %u", ntohl(dmr_hdr->timestamp_T2));
-    syslog(LOG_INFO, "  Timestamp T3: %u", ntohl(dmr_hdr->timestamp_T3));
-    syslog(LOG_INFO,
-           "send DMR: "
-           "%02x:%02x:%02x:%02x:%02x:%02x, level %d version %d size %d",
-           dmr_ehdr->ether_dhost[0], dmr_ehdr->ether_dhost[1],
-           dmr_ehdr->ether_dhost[2], dmr_ehdr->ether_dhost[3],
-           dmr_ehdr->ether_dhost[4], dmr_ehdr->ether_dhost[5], md_level,
-           version, size);
+    logDM_packet(dmr_frame, size, OAM_DMR);
   }
 
   if (send_packet(ifname, dmr_frame, size) < 0) {
