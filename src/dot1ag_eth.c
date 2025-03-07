@@ -316,18 +316,12 @@ void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
   dmr_hdr->timestamp_T2 = htonl((uint32_t)tv.tv_sec);
   gettimeofday(&tv, NULL);
   dmr_hdr->timestamp_T3 = htonl((uint32_t)tv.tv_sec);
-  /* Convert timestamps from network byte order and log them */
-  uint32_t ts_T1 = ntohl(dmr_hdr->timestamp_T1);
-  uint32_t ts_T2 = ntohl(dmr_hdr->timestamp_T2);
-  uint32_t ts_T3 = ntohl(dmr_hdr->timestamp_T3);
-  uint32_t ts_reserved = ntohl(dmr_hdr->reserved);
 
   if (verbose) {
     syslog(LOG_INFO, "DMR Timestamps:");
-    syslog(LOG_INFO, "  Timestamp T1: %u", ts_T1);
-    syslog(LOG_INFO, "  Timestamp T2: %u", ts_T2);
-    syslog(LOG_INFO, "  Timestamp T3: %u", ts_T3);
-    syslog(LOG_INFO, "  Reserved for DMR receiving equipment: %u", ts_reserved);
+    syslog(LOG_INFO, "  Timestamp T1: %u", ntohl(dmr_hdr->timestamp_T1));
+    syslog(LOG_INFO, "  Timestamp T2: %u", ntohl(dmr_hdr->timestamp_T2));
+    syslog(LOG_INFO, "  Timestamp T3: %u", ntohl(dmr_hdr->timestamp_T3));
     syslog(LOG_INFO,
            "send DMR: "
            "%02x:%02x:%02x:%02x:%02x:%02x, level %d size %d",
