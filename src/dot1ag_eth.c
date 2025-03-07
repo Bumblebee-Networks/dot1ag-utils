@@ -282,14 +282,14 @@ void logDM_packet(uint8_t *dm_frame, int size, int opcode) {
 
   dm = POS_CFM_DM(dm_frame);
 
-  uint32_t T1 = ntohl(dm->timestamp_T1);
-  uint32_t T2 = ntohl(dm->timestamp_T2);
-  uint32_t T3 = ntohl(dm->timestamp_T3);
-  uint32_t reserved = ntohl(dm->reserved);
-  syslog(LOG_INFO, "  Timestamp T1: %u", T1);
-  syslog(LOG_INFO, "  Timestamp T2: %u", T2);
-  syslog(LOG_INFO, "  Timestamp T3: %u", T3);
-  syslog(LOG_INFO, "  Reserved for DMR receiving equipment: %u", reserved);
+  syslog(LOG_INFO, "Timestamp T1: %u seconds, %u nanoseconds",
+         ntohl(dm->T1.seconds), ntohl(dm->T1.nanoseconds));
+  syslog(LOG_INFO, "Timestamp T2: %u seconds, %u nanoseconds",
+         ntohl(dm->T2.seconds), ntohl(dm->T2.nanoseconds));
+  syslog(LOG_INFO, "Timestamp T3: %u seconds, %u nanoseconds",
+         ntohl(dm->T3.seconds), ntohl(dm->T3.nanoseconds));
+  syslog(LOG_INFO, "Timestamp T4: %u seconds, %u nanoseconds",
+         ntohl(dm->T4.seconds), ntohl(dm->T4.nanoseconds));
 
   /* If TLVs are present, log their length and a hex dump of the raw TLV data */
   int header_len =
@@ -324,6 +324,13 @@ void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
   int i;
 
   verbose = 1;
+
+  struct timespec ts;
+
+  if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
+    perror("clock_gettime");
+    exit(EXIT_FAILURE);
+  }
 
   if (get_local_mac(ifname, local_mac) != 0) {
     fprintf(stderr, "Cannot determine local MAC address\n");
@@ -364,11 +371,17 @@ void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
   cfmhdr = CFMHDR(dmr_frame);
   cfmhdr->opcode = OAM_DMR;
   dmr_hdr = POS_CFM_DM(dmr_frame);
-  struct timeval tv;
-  gettimeofday(&tv, NULL);
-  dmr_hdr->timestamp_T2 = htonl((uint32_t)tv.tv_sec);
-  gettimeofday(&tv, NULL);
-  dmr_hdr->timestamp_T3 = htonl((uint32_t)tv.tv_sec);
+
+  dmr_hdr->T2.seconds = htonl((uint32_t)ts.tv_sec);
+  dmr_hdr->T2.nanoseconds = htonl((uint32_t)ts.tv_nsec);
+
+  if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
+    perror("clock_gettime");
+    exit(EXIT_FAILURE);
+  }
+
+  dmr_hdr->T3.seconds = htonl((uint32_t)ts.tv_sec);
+  dmr_hdr->T3.nanoseconds = htonl((uint32_t)ts.tv_nsec);
 
   if (verbose) {
     logDM_packet(dmr_frame, size, OAM_DMR);
