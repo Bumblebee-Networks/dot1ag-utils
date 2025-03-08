@@ -307,10 +307,36 @@ int main(int argc, char **argv) {
     exit(EXIT_FAILURE);
   }
 
-  /* open pcap device for listening */
-  handle = pcap_open_live(ifname, SNAPLEN, 1, 100, errbuf);
+  /* Open pcap device for listening with nanosecond precision */
+  handle = pcap_create(ifname, errbuf);
   if (handle == NULL) {
-    perror(errbuf);
+    fprintf(stderr, "pcap_create failed: %s\n", errbuf);
+    exit(EXIT_FAILURE);
+  }
+
+  if (pcap_set_tstamp_precision(handle, PCAP_TSTAMP_PRECISION_NANO) != 0) {
+    fprintf(stderr, "pcap_set_tstamp_precision failed: %s\n",
+            pcap_geterr(handle));
+    exit(EXIT_FAILURE);
+  }
+
+  if (pcap_set_snaplen(handle, SNAPLEN) != 0) {
+    fprintf(stderr, "pcap_set_snaplen failed: %s\n", pcap_geterr(handle));
+    exit(EXIT_FAILURE);
+  }
+
+  if (pcap_set_promisc(handle, 1) != 0) {
+    fprintf(stderr, "pcap_set_promisc failed: %s\n", pcap_geterr(handle));
+    exit(EXIT_FAILURE);
+  }
+
+  if (pcap_set_timeout(handle, 100) != 0) {
+    fprintf(stderr, "pcap_set_timeout failed: %s\n", pcap_geterr(handle));
+    exit(EXIT_FAILURE);
+  }
+
+  if (pcap_activate(handle) < 0) {
+    fprintf(stderr, "pcap_activate failed: %s\n", pcap_geterr(handle));
     exit(EXIT_FAILURE);
   }
 
@@ -425,7 +451,7 @@ int main(int argc, char **argv) {
         break;
       case OAM_DMM:
         processDMM(ifname, mdLevel, mepid, (uint8_t *)data,
-                   (int)pcap_hdr->caplen, localmac, verbose);
+                   (int)pcap_hdr->caplen, localmac, pcap_hdr->ts, verbose);
         break;
       default:
         break;

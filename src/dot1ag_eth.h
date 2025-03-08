@@ -55,7 +55,8 @@ int cfm_send_lbr(char *ifname, uint8_t *buf, int size);
 int processLTM(char *ifname, uint8_t *ltm_frame);
 
 void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
-                uint8_t *dmm_frame, int size, uint8_t *local_mac, int verbose);
+                uint8_t *dmm_frame, int size, uint8_t *local_mac,
+                struct timeval capture_tv, int verbose);
 
 void cfm_ccm_sender(char *ifname, uint16_t vlan, uint8_t md_level, char *md,
                     char *ma, uint16_t mepid, int interval);

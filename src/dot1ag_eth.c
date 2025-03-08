@@ -174,6 +174,59 @@ int get_local_mac(char *dev, uint8_t *ea) {
 }
 
 int send_packet(char *ifname, uint8_t *buf, int size) {
+  static int s = -1;
+  static int ifindex = -1;
+  static char current_ifname[IFNAMSIZ] = {0};
+  struct ifreq req;
+  struct sockaddr_ll addr_out;
+
+  /* Ensure minimum Ethernet frame length */
+  if (size < ETHER_MIN_LEN) {
+    size = ETHER_MIN_LEN;
+  }
+
+  /* If socket not open or if interface changed, create a new socket */
+  if (s < 0 || strncmp(current_ifname, ifname, IFNAMSIZ) != 0) {
+    /* Close previously opened socket if necessary */
+    if (s >= 0) {
+      close(s);
+    }
+    s = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
+    if (s < 0) {
+      perror("opening socket");
+      exit(EXIT_FAILURE);
+    }
+    /* Cache the current interface name */
+    strncpy(current_ifname, ifname, IFNAMSIZ);
+    current_ifname[IFNAMSIZ - 1] = '\0';
+
+    /* Get interface index once */
+    memset(&req, 0, sizeof(req));
+    strncpy(req.ifr_name, ifname, sizeof(req.ifr_name));
+    if (ioctl(s, SIOCGIFINDEX, &req) < 0) {
+      perror(ifname);
+      exit(EXIT_FAILURE);
+    }
+    ifindex = req.ifr_ifindex;
+  }
+
+  /* Set up the socket address parameters */
+  memset(&addr_out, 0, sizeof(addr_out));
+  addr_out.sll_family = AF_PACKET;
+  addr_out.sll_protocol = htons(ETH_P_ALL);
+  addr_out.sll_halen = ETH_ALEN;
+  addr_out.sll_ifindex = ifindex;
+  addr_out.sll_pkttype = PACKET_OTHERHOST;
+
+  if (sendto(s, buf, size, 0, (struct sockaddr *)&addr_out, sizeof(addr_out)) <
+      0) {
+    perror("sendto");
+    exit(EXIT_FAILURE);
+  }
+  return 0;
+}
+
+int send_packet_old(char *ifname, uint8_t *buf, int size) {
   int ifindex;
   int s;
   struct ifreq req;
@@ -311,7 +364,8 @@ void logDM_packet(uint8_t *dm_frame, int size, int opcode) {
 }
 
 void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
-                uint8_t *dmm_frame, int size, uint8_t *local_mac, int verbose) {
+                uint8_t *dmm_frame, int size, uint8_t *local_mac,
+                struct timeval capture_tv, int verbose) {
 
   struct cfmencap *encap;
   struct cfmhdr *cfmhdr;
@@ -323,11 +377,6 @@ void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
   int i;
 
   struct timespec ts;
-
-  if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
-    perror("clock_gettime");
-    exit(EXIT_FAILURE);
-  }
 
   dmm_ehdr = (struct ether_header *)dmm_frame;
   dmr_ehdr = (struct ether_header *)dmr_frame;
@@ -364,8 +413,8 @@ void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
   cfmhdr->opcode = OAM_DMR;
   dmr_hdr = POS_CFM_DM(dmr_frame);
 
-  dmr_hdr->T2.seconds = htonl((uint32_t)ts.tv_sec);
-  dmr_hdr->T2.nanoseconds = htonl((uint32_t)ts.tv_nsec);
+  dmr_hdr->T2.seconds = htonl((uint32_t)capture_tv.tv_sec);
+  dmr_hdr->T2.nanoseconds = htonl((uint32_t)(capture_tv.tv_usec));
 
   if (clock_gettime(CLOCK_REALTIME, &ts) != 0) {
     perror("clock_gettime");
