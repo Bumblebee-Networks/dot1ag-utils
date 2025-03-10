@@ -133,7 +133,8 @@ static void usage(void);
 static int equalstrings(char *s1, char *s2);
 
 static void cfm_ccm_receiver(char *ifname, struct pcap_pkthdr *pcap_hdr,
-                             const u_char *buf, uint16_t vlan, int verbose);
+                             const u_char *buf, uint16_t vlan,
+                             uint8_t *local_mac, int verbose);
 
 static void ccmlog(int mepid, enum LOG_ACTION action);
 
@@ -387,7 +388,8 @@ int main(int argc, char **argv) {
     /* do we need to send a CCM? */
     gettimeofday(&now, NULL);
     if (cfm_timevalcmp(next_ccm, now, <)) {
-      cfm_ccm_sender(ifname, vlan, mdLevel, md, ma, mepid, CCMinterval);
+      cfm_ccm_sender(ifname, vlan, mdLevel, md, ma, mepid, CCMinterval,
+                     localmac);
       if (CCMinterval >= 1000) {
         next_ccm.tv_sec = now.tv_sec + CCMinterval / 1000;
         next_ccm.tv_usec = now.tv_usec;
@@ -443,7 +445,7 @@ int main(int argc, char **argv) {
       cfmhdr = CFMHDR(data);
       switch (cfmhdr->opcode) {
       case CFM_CCM:
-        cfm_ccm_receiver(ifname, pcap_hdr, data, vlan, verbose);
+        cfm_ccm_receiver(ifname, pcap_hdr, data, vlan, localmac, verbose);
         break;
       case CFM_LBM:
         break;
@@ -494,7 +496,8 @@ static int equalstrings(char *s1, char *s2) {
 }
 
 static void cfm_ccm_receiver(char *ifname, struct pcap_pkthdr *pcap_hdr,
-                             const u_char *buf, uint16_t vlan, int verbose) {
+                             const u_char *buf, uint16_t vlan,
+                             uint8_t *local_mac, int verbose) {
   struct cfmencap *encap;
   struct cfmhdr *cfmhdr;
   struct cfm_cc *cfm_cc;
@@ -503,17 +506,11 @@ static void cfm_ccm_receiver(char *ifname, struct pcap_pkthdr *pcap_hdr,
   uint8_t *md_namep;
   uint8_t sma_name_fmt;
   uint8_t smanl = 0;
-  uint8_t local_mac[ETHER_ADDR_LEN];
   struct timeval now;
   int rMEPid;
   int more_tlvs;
   int tlv_length;
   uint8_t *p;
-
-  if (get_local_mac(ifname, local_mac) != 0) {
-    fprintf(stderr, "Cannot determine local MAC address\n");
-    exit(EXIT_FAILURE);
-  }
 
   encap = (struct cfmencap *)buf;
 

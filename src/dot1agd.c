@@ -200,7 +200,7 @@ int main(int argc, char **argv) {
         break;
       case CFM_LTM:
         /* Linktrace Responder */
-        processLTM(ifname, (uint8_t *)data);
+        processLTM(ifname, (uint8_t *)data, localmac);
         break;
       default:
         break;
