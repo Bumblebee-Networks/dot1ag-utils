@@ -50,15 +50,15 @@ int cfm_waitfor_lbr(pcap_t *handle, struct timeval time_sent,
                     struct timeval timeout, uint8_t *dst, uint8_t *src,
                     int vlan, uint8_t md_level, uint32_t trans_id);
 
-int cfm_send_lbr(char *ifname, uint8_t *buf, int size);
+int cfm_send_lbr(char *ifname, uint8_t *buf, int size, uint8_t *local_mac);
 
-int processLTM(char *ifname, uint8_t *ltm_frame);
+int processLTM(char *ifname, uint8_t *ltm_frame, uint8_t *local_mac);
 
 void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
                 uint8_t *dmm_frame, int size, uint8_t *local_mac,
                 struct timeval capture_tv, int verbose);
 
 void cfm_ccm_sender(char *ifname, uint16_t vlan, uint8_t md_level, char *md,
-                    char *ma, uint16_t mepid, int interval);
+                    char *ma, uint16_t mepid, int interval, uint8_t *local_mac);
 
 void print_ltr(uint8_t *buf);

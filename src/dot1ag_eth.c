@@ -434,18 +434,14 @@ void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
   }
 }
 
-int cfm_send_lbr(char *ifname, uint8_t *lbm_frame, int size) {
+int cfm_send_lbr(char *ifname, uint8_t *lbm_frame, int size,
+                 uint8_t *local_mac) {
   uint8_t lbr_frame[ETHER_MAX_LEN];
   struct cfmhdr *cfmhdr;
-  uint8_t local_mac[ETHER_ADDR_LEN];
   struct ether_header *lbm_ehdr;
   struct ether_header *lbr_ehdr;
   int i;
 
-  if (get_local_mac(ifname, local_mac) != 0) {
-    fprintf(stderr, "Cannot determine local MAC address\n");
-    exit(EXIT_FAILURE);
-  }
   lbm_ehdr = (struct ether_header *)lbm_frame;
   lbr_ehdr = (struct ether_header *)lbr_frame;
 
@@ -488,13 +484,12 @@ int cfm_send_lbr(char *ifname, uint8_t *lbm_frame, int size) {
   return 0;
 }
 
-int processLTM(char *ifname, uint8_t *ltm_frame) {
+int processLTM(char *ifname, uint8_t *ltm_frame, uint8_t *local_mac) {
   int i;
   uint8_t outbuf[ETHER_MAX_LEN];
   int size = 0;
   struct cfmencap *encap;
   struct ether_header *ltm_ehdr;
-  uint8_t local_mac[ETHER_ADDR_LEN];
   uint8_t flags;
   uint8_t action;
   uint16_t vlan;
@@ -505,10 +500,6 @@ int processLTM(char *ifname, uint8_t *ltm_frame) {
   uint32_t transid;
   struct cfm_ltm *cfm_ltm;
 
-  if (get_local_mac(ifname, local_mac) != 0) {
-    fprintf(stderr, "Cannot determine local MAC address\n");
-    return 0;
-  }
   ltm_ehdr = (struct ether_header *)ltm_frame;
 
   /* silently discard frame if it was sent by us */
@@ -643,9 +634,9 @@ int processLTM(char *ifname, uint8_t *ltm_frame) {
 static uint32_t CCIsentCCMs = 0;
 
 void cfm_ccm_sender(char *ifname, uint16_t vlan, uint8_t md_level, char *md,
-                    char *ma, uint16_t mepid, int interval) {
+                    char *ma, uint16_t mepid, int interval,
+                    uint8_t *local_mac) {
   uint8_t outbuf[ETHER_MAX_LEN];
-  uint8_t local_mac[ETHER_ADDR_LEN];
   uint8_t remote_mac[ETHER_ADDR_LEN];
   uint8_t flags;
   int pktsize = 0;
@@ -656,11 +647,6 @@ void cfm_ccm_sender(char *ifname, uint16_t vlan, uint8_t md_level, char *md,
   int mdnl;
   int smanl;
   int max_smanl;
-
-  if (get_local_mac(ifname, local_mac) != 0) {
-    fprintf(stderr, "Cannot determine local MAC address\n");
-    exit(EXIT_FAILURE);
-  }
 
   /*
    * Below the outgoing Ethernet frame is built
