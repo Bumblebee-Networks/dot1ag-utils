@@ -434,18 +434,14 @@ void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
   }
 }
 
-int cfm_send_lbr(char *ifname, uint8_t *lbm_frame, int size) {
+int cfm_send_lbr(char *ifname, uint8_t *lbm_frame, int size,
+                 uint8_t *local_mac) {
   uint8_t lbr_frame[ETHER_MAX_LEN];
   struct cfmhdr *cfmhdr;
-  uint8_t local_mac[ETHER_ADDR_LEN];
   struct ether_header *lbm_ehdr;
   struct ether_header *lbr_ehdr;
   int i;
 
-  if (get_local_mac(ifname, local_mac) != 0) {
-    fprintf(stderr, "Cannot determine local MAC address\n");
-    exit(EXIT_FAILURE);
-  }
   lbm_ehdr = (struct ether_header *)lbm_frame;
   lbr_ehdr = (struct ether_header *)lbr_frame;
 

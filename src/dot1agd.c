@@ -196,7 +196,7 @@ int main(int argc, char **argv) {
       case CFM_CCM:
         break;
       case CFM_LBM:
-        cfm_send_lbr(ifname, (uint8_t *)data, (int)header->caplen);
+        cfm_send_lbr(ifname, (uint8_t *)data, (int)header->caplen, localmac);
         break;
       case CFM_LTM:
         /* Linktrace Responder */

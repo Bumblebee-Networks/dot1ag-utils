@@ -50,7 +50,7 @@ int cfm_waitfor_lbr(pcap_t *handle, struct timeval time_sent,
                     struct timeval timeout, uint8_t *dst, uint8_t *src,
                     int vlan, uint8_t md_level, uint32_t trans_id);
 
-int cfm_send_lbr(char *ifname, uint8_t *buf, int size);
+int cfm_send_lbr(char *ifname, uint8_t *buf, int size, uint8_t *local_mac);
 
 int processLTM(char *ifname, uint8_t *ltm_frame);
 
