@@ -918,7 +918,7 @@ static uint32_t rx_count_map[MAX_TESTS]; // simple fixed‐size map for demo
 #define ETHER_DOT1Q_LEN 4
 
 /* Helper to format a MAC address into a static buffer */
-static const char *fmt_mac(const uint8_t mac[6]) {
+const char *fmt_mac(const uint8_t mac[6]) {
   static char buf[18];
   snprintf(buf, sizeof(buf), "%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1],
            mac[2], mac[3], mac[4], mac[5]);
@@ -934,21 +934,26 @@ static const char *fmt_mac(const uint8_t mac[6]) {
  * @param frame  raw packet bytes
  * @param len    total length of the buffer
  */
-void log_slm_frame(const uint8_t *frame, size_t len) {
-  const struct ether_header *eh = (const struct ether_header *)frame;
-  size_t offset = sizeof(*eh);
+void log_slm_frame(const uint8_t *sl_frame, size_t len, int opcode) {
 
+  const char *pkt_type_str = (opcode == CFM_SLM) ? "SLM" : "SLR";
+
+  struct ether_header *eth_hdr = (struct ether_header *)sl_frame;
+
+  syslog(LOG_INFO, "=== %s Packet ===", pkt_type_str);
   /* Basic Ethernet header */
-  syslog(LOG_INFO, "Ethernet: dst=%s src=%s len=%zu", fmt_mac(eh->ether_dhost),
-         fmt_mac(eh->ether_shost), len);
 
-  /* Point to payload after Ethernet (+ VLAN) header */
-  if (offset >= len) {
-    syslog(LOG_INFO, "  Frame too short for payload");
-    return;
-  }
+  syslog(LOG_INFO, "Ethernet Header:");
+  syslog(LOG_INFO, "  Source MAC: %02x:%02x:%02x:%02x:%02x:%02x",
+         eth_hdr->ether_shost[0], eth_hdr->ether_shost[1],
+         eth_hdr->ether_shost[2], eth_hdr->ether_shost[3],
+         eth_hdr->ether_shost[4], eth_hdr->ether_shost[5]);
+  syslog(LOG_INFO, "  Destination MAC: %02x:%02x:%02x:%02x:%02x:%02x",
+         eth_hdr->ether_dhost[0], eth_hdr->ether_dhost[1],
+         eth_hdr->ether_dhost[2], eth_hdr->ether_dhost[3],
+         eth_hdr->ether_dhost[4], eth_hdr->ether_dhost[5]);
 
-  const struct cfmhdr *hdr = CFMHDR(frame);
+  const struct cfmhdr *hdr = CFMHDR(sl_frame);
   const uint8_t *base = (const uint8_t *)hdr;
 
   uint16_t src_mep = ntohs(*(uint16_t *)(base + 4));
@@ -973,7 +978,7 @@ void process_slm_frame(char *ifname, uint8_t *frame, int size,
   uint32_t local_rx_count;
 
   if (verbose) {
-    log_slm_frame(frame, size);
+    log_slm_frame(frame, size, CFM_SLM);
   }
 
   /* 2) Extract the 4‐byte Test ID at offset 8 in the CFM header */
