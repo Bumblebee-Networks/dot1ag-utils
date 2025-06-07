@@ -934,7 +934,7 @@ static const char *fmt_mac(const uint8_t mac[6]) {
  * @param frame  raw packet bytes
  * @param len    total length of the buffer
  */
-void log_frame_info(const uint8_t *frame, size_t len) {
+void log_slm_frame(const uint8_t *frame, size_t len) {
   const struct ether_header *eh = (const struct ether_header *)frame;
   size_t offset = sizeof(*eh);
 
@@ -973,7 +973,7 @@ void process_slm_frame(char *ifname, uint8_t *frame, int size,
   uint32_t local_rx_count;
 
   if (verbose) {
-    log_frame_info(frame, size);
+    log_slm_frame(frame, size);
   }
 
   /* 2) Extract the 4‐byte Test ID at offset 8 in the CFM header */
