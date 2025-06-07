@@ -363,9 +363,9 @@ void logDM_packet(uint8_t *dm_frame, int size, int opcode) {
   }
 }
 
-void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
-                uint8_t *dmm_frame, int size, uint8_t *local_mac,
-                struct timeval capture_tv, int verbose) {
+void process_dmm_frame(char *ifname, uint8_t md_level, uint16_t mep_id,
+                       uint8_t *dmm_frame, int size, uint8_t *local_mac,
+                       struct timeval capture_tv, int verbose) {
 
   struct cfmencap *encap;
   struct cfmhdr *cfmhdr;
@@ -784,4 +784,156 @@ void cfm_ccm_sender(char *ifname, uint16_t vlan, uint8_t md_level, char *md,
     fprintf(stderr, "send_packet failed\n");
     return;
   }
+}
+
+/*
+ * Offsets (in bytes) relative to the start of the CFM header:
+ *
+ *   0..3    = struct cfmhdr (4 bytes: md_level/version, opcode, flags,
+ * tlv_offset) 4..5    = Source MEP ID               (uint16_t, network order)
+ *   6..7    = [Reserved in SLM] / Responder MEP ID in SLR (uint16_t, network
+ * order) 8..11   = Test ID                     (uint32_t, network order) 12..15
+ * = TxFCf (forward‐count from initiator)       (uint32_t, network order) 16..19
+ * = TxFCb (backward‐count, only in SLR)        (uint32_t, network order) 20..
+ * = (optional TLVs begin at offset = tlv_offset)
+ */
+
+/**
+ * cfm_send_slr:
+ *   Handle an incoming one‐way ETH-SLM (Opcode = CFM_SLM) and send back the
+ *   corresponding ETH-SLR (Opcode = CFM_SLR). Uses CFMHDR() to locate the
+ *   first 4 bytes of the CFM header (handling VLAN tags if present), then
+ *   manually reads/writes the fields that follow.
+ *
+ * @param  ifname          Outgoing interface name (e.g., "ge-0/0/1")
+ * @param  slm_frame       Pointer to the received Ethernet frame containing SLM
+ * @param  size            Length in bytes of the received frame
+ * @param  local_mac       This device’s MAC address (6 bytes)
+ * @param  local_mep_id    This device’s MEP ID (13 LSB bits; host byte order)
+ * @param  local_rx_count  RxFCl: number of SLM PDUs received so far for this
+ * Test ID
+ *
+ * @return 0 on success (SLR sent or frame silently dropped if not for us),
+ *         1 if the received frame was malformed (e.g., multicast source).
+ */
+int cfm_send_slr(char *ifname, uint8_t *slm_frame, int size, uint8_t *local_mac,
+                 uint16_t local_mep_id, uint32_t local_rx_count) {
+  uint8_t slr_frame[ETHER_MAX_LEN];
+  struct ether_header *slm_ehdr = (struct ether_header *)slm_frame;
+  struct ether_header *slr_ehdr = (struct ether_header *)slr_frame;
+  struct cfmhdr *cfm_req; /* pointer to CFM header in received frame */
+  struct cfmhdr *cfm_rep; /* pointer to CFM header in reply */
+  uint8_t *base_rep;      /* byte‐wise pointer to start of CFM header */
+  int i;
+
+  /* 1) Drop if source MAC is multicast (SLM must come from a unicast MEP). */
+  if (ETHER_IS_MCAST(slm_ehdr->ether_shost)) {
+    fprintf(stderr, "cfm_send_slr: received SLM from multicast source\n");
+    return 1;
+  }
+
+  /* 2) If destination MAC ≠ our local MAC, silently drop */
+  if (!ETHER_IS_EQUAL(slm_ehdr->ether_dhost, local_mac)) {
+    return 0;
+  }
+
+  /* 3) Copy the entire incoming frame into our local buffer (preserve TLVs,
+   * etc.) */
+  memset(slr_frame, 0, sizeof(slr_frame));
+  memcpy(slr_frame, slm_frame, size);
+
+  /* 4) Swap Ethernet MACs in the reply */
+  for (i = 0; i < ETHER_ADDR_LEN; i++) {
+    slr_ehdr->ether_shost[i] = local_mac[i];
+    slr_ehdr->ether_dhost[i] = slm_ehdr->ether_shost[i];
+  }
+
+  /*
+   * 5) Locate the CFM header (handles tagged vs. untagged):
+   *    CFMHDR() returns a (struct cfmhdr *) pointing to the first 4 bytes
+   *    of the CFM header.
+   */
+  cfm_req = CFMHDR(slm_frame);
+  cfm_rep = CFMHDR(slr_frame);
+
+  /*
+   * We'll also keep byte‐wise pointers, so we can address beyond the 4‐byte
+   * struct:
+   */
+  base_rep = (uint8_t *)cfm_rep;
+
+  /* 6) Ensure this is indeed an SLM PDU (opcode == CFM_SLM == 0x37) */
+  if (cfm_req->opcode != CFM_SLM) {
+    /* Not an SLM, drop silently */
+    return 0;
+  }
+
+  /* 7) Change opcode from CFM_SLM → CFM_SLR */
+  cfm_rep->opcode = CFM_SLR;
+
+  /*
+   * 8) Overwrite “Responder MEP ID” (bytes [6..7] relative to start of CFM
+   * header) In the incoming SLM, bytes [6..7] are reserved (0). In the SLR we
+   * set: base_rep[4]..base_rep[5] = Source MEP ID (copied automatically by
+   * memcpy) base_rep[6]..base_rep[7] = Responder MEP ID = our local_mep_id
+   * (nb‐order)
+   */
+  {
+    uint16_t be_mep = htons(local_mep_id & 0x1FFF);
+    memcpy(&base_rep[6], &be_mep, sizeof(be_mep));
+  }
+
+  /*
+   * 9) Populate “TxFCb” (bytes [16..19] relative to start of CFM header)
+   *    In the incoming SLM, bytes [12..15] = TxFCf (forward‐frame count from
+   * initiator). We leave that unchanged (already copied by memcpy). Now set:
+   *      base_rep[16..19] = TxFCb = local_rx_count (number of SLM PDUs we have
+   * received).
+   */
+  {
+    uint32_t be_rx_cnt = htonl(local_rx_count);
+    memcpy(&base_rep[16], &be_rx_cnt, sizeof(be_rx_cnt));
+  }
+
+  /*
+   * 10) All other fields remain as in the incoming SLM:
+   *     – bytes [0..3] (mdlevel_version, opcode, flags, tlv_offset)
+   *     – bytes [4..5] Source MEP ID (unchanged)
+   *     – bytes [ 8..11 ] Test ID (unchanged)
+   *     – bytes [12..15] TxFCf  (unchanged)
+   *     – any TLVs starting at offset = cfm_rep->tlv_offset  (unchanged)
+   */
+
+  /* 11) Transmit the SLR frame */
+  if (send_packet(ifname, slr_frame, size) < 0) {
+    perror("cfm_send_slr: send_packet failed");
+    exit(1);
+  }
+
+  return 0;
+}
+
+static uint32_t rx_count_map[MAX_TESTS]; // simple fixed‐size map for demo
+
+void process_slm_frame(char *ifname, uint8_t *frame, int size,
+                       uint8_t *local_mac, uint16_t local_mep_id) {
+  struct cfmhdr *hdr = CFMHDR(frame);
+  uint8_t *base = (uint8_t *)hdr;
+  uint32_t test_id;
+  uint16_t idx;
+  uint32_t local_rx_count;
+
+  /* 2) Extract the 4‐byte Test ID at offset 8 in the CFM header */
+  memcpy(&test_id, &base[8], sizeof(test_id));
+  test_id = ntohl(test_id);
+
+  /* 3) Map it into our small table (modulo for simplicity) */
+  idx = test_id % MAX_TESTS;
+
+  /* 4) Increment the counter for this Test ID */
+  rx_count_map[idx] += 1;
+  local_rx_count = rx_count_map[idx];
+
+  /* 5) Now send the SLR reply, passing the updated count */
+  cfm_send_slr(ifname, frame, size, local_mac, local_mep_id, local_rx_count);
 }

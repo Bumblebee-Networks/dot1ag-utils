@@ -109,6 +109,8 @@ void cfm_addencap(int vlan, uint8_t *src, uint8_t *dst, uint8_t *buf,
 #define CFM_LTM 5
 #define OAM_DMR 46 // Delay Measurement Reply
 #define OAM_DMM 47 // Delay Measurement Message
+#define CFM_SLM 55 // Service Level Message
+#define CFM_SLR 54 // Service Level Reply
 
 /*
  *  Common CFM Header

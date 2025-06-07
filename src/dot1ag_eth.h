@@ -33,7 +33,7 @@
 #ifdef HAVE_NET_BPF_H
 
 /*
- * FreeBSD has /dev/bpf als clone interface
+ * FreeBSD has /dev/bpf also clone interface
  * MacOSX has /dev/bpf0, /dev/bpf1, ...
  */
 
@@ -54,11 +54,16 @@ int cfm_send_lbr(char *ifname, uint8_t *buf, int size, uint8_t *local_mac);
 
 int processLTM(char *ifname, uint8_t *ltm_frame, uint8_t *local_mac);
 
-void processDMM(char *ifname, uint8_t md_level, uint16_t mep_id,
-                uint8_t *dmm_frame, int size, uint8_t *local_mac,
-                struct timeval capture_tv, int verbose);
+void process_dmm_frame(char *ifname, uint8_t md_level, uint16_t mep_id,
+                       uint8_t *dmm_frame, int size, uint8_t *local_mac,
+                       struct timeval capture_tv, int verbose);
 
 void cfm_ccm_sender(char *ifname, uint16_t vlan, uint8_t md_level, char *md,
                     char *ma, uint16_t mepid, int interval, uint8_t *local_mac);
 
 void print_ltr(uint8_t *buf);
+
+void process_slm_frame(char *ifname, uint8_t *frame, int size,
+                       uint8_t *local_mac, uint16_t local_mep_id);
+
+#define MAX_TESTS 256
