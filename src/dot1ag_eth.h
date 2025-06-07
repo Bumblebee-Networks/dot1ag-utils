@@ -64,6 +64,6 @@ void cfm_ccm_sender(char *ifname, uint16_t vlan, uint8_t md_level, char *md,
 void print_ltr(uint8_t *buf);
 
 void process_slm_frame(char *ifname, uint8_t *frame, int size,
-                       uint8_t *local_mac, uint16_t local_mep_id);
+                       uint8_t *local_mac, uint16_t local_mep_id, int verbose);
 
 #define MAX_TESTS 256

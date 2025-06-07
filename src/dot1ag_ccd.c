@@ -459,7 +459,7 @@ int main(int argc, char **argv) {
 
       case CFM_SLM:
         process_slm_frame(ifname, (uint8_t *)data, (int)pcap_hdr->caplen,
-                          localmac, mepid);
+                          localmac, mepid, verbose);
       default:
         break;
       }

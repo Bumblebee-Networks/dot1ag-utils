@@ -915,13 +915,89 @@ int cfm_send_slr(char *ifname, uint8_t *slm_frame, int size, uint8_t *local_mac,
 
 static uint32_t rx_count_map[MAX_TESTS]; // simple fixed‐size map for demo
 
+#define ETHER_DOT1Q_LEN 4
+
+/* Helper to format a MAC address into a static buffer */
+static const char *fmt_mac(const uint8_t mac[6]) {
+  static char buf[18];
+  snprintf(buf, sizeof(buf), "%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1],
+           mac[2], mac[3], mac[4], mac[5]);
+  return buf;
+}
+
+/**
+ * log_frame_info()
+ *
+ * Inspect an Ethernet frame (possibly 802.1Q-tagged and/or CFM/Y.1731)
+ * and emit key fields to syslog(LOG_INFO) for debugging.
+ *
+ * @param frame  raw packet bytes
+ * @param len    total length of the buffer
+ */
+void log_frame_info(const uint8_t *frame, size_t len) {
+  const struct ether_header *eh = (const struct ether_header *)frame;
+  uint16_t ethertype;
+  size_t offset = sizeof(*eh);
+
+  /* Basic Ethernet header */
+  syslog(LOG_INFO, "Ethernet: dst=%s src=%s len=%zu", fmt_mac(eh->ether_dhost),
+         fmt_mac(eh->ether_shost), len);
+
+  ethertype = ntohs(eh->ether_type);
+  syslog(LOG_INFO, "EtherType: 0x%04x", ethertype);
+
+  /* Handle single 802.1Q VLAN tag, if present */
+  if (ethertype == ETHERTYPE_VLAN) {
+    struct {
+      uint16_t tci;
+      uint16_t inner_ethertype;
+    } __attribute__((packed)) *vlan = (void *)(frame + offset);
+
+    uint16_t tci = ntohs(vlan->tci);
+    uint16_t vid = tci & 0x0FFF;
+    ethertype = ntohs(vlan->inner_ethertype);
+    offset += ETHER_DOT1Q_LEN;
+
+    syslog(LOG_INFO, "  VLAN tag: id=%u pcp=%u cfi=%u, inner Ethertype=0x%04x",
+           vid, (tci >> 13) & 0x7, (tci >> 12) & 0x1, ethertype);
+  }
+
+  /* Point to payload after Ethernet (+ VLAN) header */
+  if (offset >= len) {
+    syslog(LOG_INFO, "  Frame too short for payload");
+    return;
+  }
+
+  /* If this is a CFM frame (Ethertype 0x8902), log CFM fields */
+  if (ethertype == 0x8902) {
+    const struct cfmhdr *hdr = CFMHDR(frame);
+    const uint8_t *base = (const uint8_t *)hdr;
+
+    uint16_t src_mep = ntohs(*(uint16_t *)(base + 4));
+    uint16_t resp_mep = ntohs(*(uint16_t *)(base + 6));
+    uint32_t test_id = ntohl(*(uint32_t *)(base + 8));
+    uint32_t txfcf = ntohl(*(uint32_t *)(base + 12));
+    uint32_t txfcb = ntohl(*(uint32_t *)(base + 16));
+
+    syslog(LOG_INFO, "CFM/Y.1731: opcode=%u flags=0x%02x tlv_offset=%u",
+           hdr->opcode, hdr->flags, hdr->tlv_offset);
+
+    syslog(LOG_INFO, "  src_mep=%u resp_mep=%u test_id=%u txfcf=%u txfcb=%u",
+           src_mep, resp_mep, test_id, txfcf, txfcb);
+  }
+}
+
 void process_slm_frame(char *ifname, uint8_t *frame, int size,
-                       uint8_t *local_mac, uint16_t local_mep_id) {
+                       uint8_t *local_mac, uint16_t local_mep_id, int verbose) {
   struct cfmhdr *hdr = CFMHDR(frame);
   uint8_t *base = (uint8_t *)hdr;
   uint32_t test_id;
   uint16_t idx;
   uint32_t local_rx_count;
+
+  if (verbose) {
+    log_frame_info(frame, size);
+  }
 
   /* 2) Extract the 4‐byte Test ID at offset 8 in the CFM header */
   memcpy(&test_id, &base[8], sizeof(test_id));
