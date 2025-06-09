@@ -786,6 +786,50 @@ void cfm_ccm_sender(char *ifname, uint16_t vlan, uint8_t md_level, char *md,
   }
 }
 
+/**
+ * log_frame_info()
+ *
+ * Inspect an Ethernet frame (possibly 802.1Q-tagged and/or CFM/Y.1731)
+ * and emit key fields to syslog(LOG_INFO) for debugging.
+ *
+ * @param frame  raw packet bytes
+ * @param len    total length of the buffer
+ */
+void log_slm_frame(const uint8_t *sl_frame, size_t len, int opcode) {
+
+  const char *pkt_type_str = (opcode == CFM_SLM) ? "SLM" : "SLR";
+
+  struct ether_header *eth_hdr = (struct ether_header *)sl_frame;
+
+  syslog(LOG_INFO, "=== %s Packet ===", pkt_type_str);
+  /* Basic Ethernet header */
+
+  syslog(LOG_INFO, "Ethernet Header:");
+  syslog(LOG_INFO, "  Source MAC: %02x:%02x:%02x:%02x:%02x:%02x",
+         eth_hdr->ether_shost[0], eth_hdr->ether_shost[1],
+         eth_hdr->ether_shost[2], eth_hdr->ether_shost[3],
+         eth_hdr->ether_shost[4], eth_hdr->ether_shost[5]);
+  syslog(LOG_INFO, "  Destination MAC: %02x:%02x:%02x:%02x:%02x:%02x",
+         eth_hdr->ether_dhost[0], eth_hdr->ether_dhost[1],
+         eth_hdr->ether_dhost[2], eth_hdr->ether_dhost[3],
+         eth_hdr->ether_dhost[4], eth_hdr->ether_dhost[5]);
+
+  const struct cfmhdr *hdr = CFMHDR(sl_frame);
+  const uint8_t *base = (const uint8_t *)hdr;
+
+  uint16_t src_mep = ntohs(*(uint16_t *)(base + 4));
+  uint16_t resp_mep = ntohs(*(uint16_t *)(base + 6));
+  uint32_t test_id = ntohl(*(uint32_t *)(base + 8));
+  uint32_t txfcf = ntohl(*(uint32_t *)(base + 12));
+  uint32_t txfcb = ntohl(*(uint32_t *)(base + 16));
+
+  syslog(LOG_INFO, "CFM/Y.1731: opcode=%u flags=0x%02x tlv_offset=%u",
+         hdr->opcode, hdr->flags, hdr->tlv_offset);
+
+  syslog(LOG_INFO, "  src_mep=%u resp_mep=%u test_id=%u txfcf=%u txfcb=%u",
+         src_mep, resp_mep, test_id, txfcf, txfcb);
+}
+
 /*
  * Offsets (in bytes) relative to the start of the CFM header:
  *
@@ -811,13 +855,14 @@ void cfm_ccm_sender(char *ifname, uint16_t vlan, uint8_t md_level, char *md,
  * @param  local_mac       This device’s MAC address (6 bytes)
  * @param  local_mep_id    This device’s MEP ID (13 LSB bits; host byte order)
  * @param  local_rx_count  RxFCl: number of SLM PDUs received so far for this
+ * @param  verbose         Verbose output (0 or 1)
  * Test ID
  *
  * @return 0 on success (SLR sent or frame silently dropped if not for us),
  *         1 if the received frame was malformed (e.g., multicast source).
  */
 int cfm_send_slr(char *ifname, uint8_t *slm_frame, int size, uint8_t *local_mac,
-                 uint16_t local_mep_id, uint32_t local_rx_count) {
+                 uint16_t local_mep_id, uint32_t local_rx_count, int verbose) {
   uint8_t slr_frame[ETHER_MAX_LEN];
   struct ether_header *slm_ehdr = (struct ether_header *)slm_frame;
   struct ether_header *slr_ehdr = (struct ether_header *)slr_frame;
@@ -910,6 +955,10 @@ int cfm_send_slr(char *ifname, uint8_t *slm_frame, int size, uint8_t *local_mac,
     exit(1);
   }
 
+  if (verbose) {
+    log_slm_frame(slr_frame, size, CFM_SLR);
+  }
+
   return 0;
 }
 
@@ -921,50 +970,6 @@ const char *fmt_mac(const uint8_t mac[6]) {
   snprintf(buf, sizeof(buf), "%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1],
            mac[2], mac[3], mac[4], mac[5]);
   return buf;
-}
-
-/**
- * log_frame_info()
- *
- * Inspect an Ethernet frame (possibly 802.1Q-tagged and/or CFM/Y.1731)
- * and emit key fields to syslog(LOG_INFO) for debugging.
- *
- * @param frame  raw packet bytes
- * @param len    total length of the buffer
- */
-void log_slm_frame(const uint8_t *sl_frame, size_t len, int opcode) {
-
-  const char *pkt_type_str = (opcode == CFM_SLM) ? "SLM" : "SLR";
-
-  struct ether_header *eth_hdr = (struct ether_header *)sl_frame;
-
-  syslog(LOG_INFO, "=== %s Packet ===", pkt_type_str);
-  /* Basic Ethernet header */
-
-  syslog(LOG_INFO, "Ethernet Header:");
-  syslog(LOG_INFO, "  Source MAC: %02x:%02x:%02x:%02x:%02x:%02x",
-         eth_hdr->ether_shost[0], eth_hdr->ether_shost[1],
-         eth_hdr->ether_shost[2], eth_hdr->ether_shost[3],
-         eth_hdr->ether_shost[4], eth_hdr->ether_shost[5]);
-  syslog(LOG_INFO, "  Destination MAC: %02x:%02x:%02x:%02x:%02x:%02x",
-         eth_hdr->ether_dhost[0], eth_hdr->ether_dhost[1],
-         eth_hdr->ether_dhost[2], eth_hdr->ether_dhost[3],
-         eth_hdr->ether_dhost[4], eth_hdr->ether_dhost[5]);
-
-  const struct cfmhdr *hdr = CFMHDR(sl_frame);
-  const uint8_t *base = (const uint8_t *)hdr;
-
-  uint16_t src_mep = ntohs(*(uint16_t *)(base + 4));
-  uint16_t resp_mep = ntohs(*(uint16_t *)(base + 6));
-  uint32_t test_id = ntohl(*(uint32_t *)(base + 8));
-  uint32_t txfcf = ntohl(*(uint32_t *)(base + 12));
-  uint32_t txfcb = ntohl(*(uint32_t *)(base + 16));
-
-  syslog(LOG_INFO, "CFM/Y.1731: opcode=%u flags=0x%02x tlv_offset=%u",
-         hdr->opcode, hdr->flags, hdr->tlv_offset);
-
-  syslog(LOG_INFO, "  src_mep=%u resp_mep=%u test_id=%u txfcf=%u txfcb=%u",
-         src_mep, resp_mep, test_id, txfcf, txfcb);
 }
 
 void process_slm_frame(char *ifname, uint8_t *frame, int size,
@@ -991,5 +996,6 @@ void process_slm_frame(char *ifname, uint8_t *frame, int size,
   local_rx_count = rx_count_map[idx];
 
   /* 5) Now send the SLR reply, passing the updated count */
-  cfm_send_slr(ifname, frame, size, local_mac, local_mep_id, local_rx_count);
+  cfm_send_slr(ifname, frame, size, local_mac, local_mep_id, local_rx_count,
+               verbose);
 }
