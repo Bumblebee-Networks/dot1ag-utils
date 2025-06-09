@@ -915,8 +915,6 @@ int cfm_send_slr(char *ifname, uint8_t *slm_frame, int size, uint8_t *local_mac,
 
 static uint32_t rx_count_map[MAX_TESTS]; // simple fixed‐size map for demo
 
-#define ETHER_DOT1Q_LEN 4
-
 /* Helper to format a MAC address into a static buffer */
 const char *fmt_mac(const uint8_t mac[6]) {
   static char buf[18];
