@@ -1004,7 +1004,7 @@ void process_slm_frame(char *ifname, uint8_t *frame, int size,
   uint32_t local_rx_count;
 
   if (verbose) {
-    // log_slm_frame(frame, size, CFM_SLM);
+    log_slm_frame(frame, size, CFM_SLM);
   }
 
   /* 2) Extract the 4‐byte Test ID at offset 8 in the CFM header */
