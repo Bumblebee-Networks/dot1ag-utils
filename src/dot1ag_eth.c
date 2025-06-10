@@ -796,38 +796,61 @@ void cfm_ccm_sender(char *ifname, uint16_t vlan, uint8_t md_level, char *md,
  * @param len    total length of the buffer
  */
 void log_slm_frame(const uint8_t *sl_frame, size_t len, int opcode) {
-
   const char *pkt_type_str = (opcode == CFM_SLM) ? "SLM" : "SLR";
+  const struct ether_header *eth = (const void *)sl_frame;
+  uint16_t ethertype = ntohs(eth->ether_type);
 
-  struct ether_header *eth_hdr = (struct ether_header *)sl_frame;
-
+  openlog("cfm-debug", LOG_PID | LOG_NDELAY, LOG_USER);
   syslog(LOG_INFO, "=== %s Packet ===", pkt_type_str);
-  /* Basic Ethernet header */
 
-  syslog(LOG_INFO, "Ethernet Header:");
-  syslog(LOG_INFO, "  Source MAC: %02x:%02x:%02x:%02x:%02x:%02x",
-         eth_hdr->ether_shost[0], eth_hdr->ether_shost[1],
-         eth_hdr->ether_shost[2], eth_hdr->ether_shost[3],
-         eth_hdr->ether_shost[4], eth_hdr->ether_shost[5]);
-  syslog(LOG_INFO, "  Destination MAC: %02x:%02x:%02x:%02x:%02x:%02x",
-         eth_hdr->ether_dhost[0], eth_hdr->ether_dhost[1],
-         eth_hdr->ether_dhost[2], eth_hdr->ether_dhost[3],
-         eth_hdr->ether_dhost[4], eth_hdr->ether_dhost[5]);
+  /* Ethernet header */
+  syslog(LOG_INFO,
+         "Ethernet: dst=%02x:%02x:%02x:%02x:%02x:%02x "
+         "src=%02x:%02x:%02x:%02x:%02x:%02x "
+         "ethertype=0x%04hx len=%zu",
+         eth->ether_dhost[0], eth->ether_dhost[1], eth->ether_dhost[2],
+         eth->ether_dhost[3], eth->ether_dhost[4], eth->ether_dhost[5],
+         eth->ether_shost[0], eth->ether_shost[1], eth->ether_shost[2],
+         eth->ether_shost[3], eth->ether_shost[4], eth->ether_shost[5],
+         (unsigned short)ethertype, len);
 
+  size_t offset = sizeof(*eth);
+  if (ethertype == ETHERTYPE_VLAN) {
+    const uint16_t *vlan_hdr = (const void *)(sl_frame + offset);
+    uint16_t tci = ntohs(vlan_hdr[0]);
+    uint16_t vid = tci & 0x0FFF;
+    uint8_t pcp = (tci >> 13) & 0x07;
+    uint8_t cfi = (tci >> 12) & 0x01;
+    ethertype = ntohs(vlan_hdr[1]);
+    offset += 4;
+    syslog(LOG_INFO, "VLAN Tag: id=%u pcp=%u cfi=%u inner_eth=0x%04hx", vid,
+           pcp, cfi, (unsigned short)ethertype);
+  }
+
+  /* CFM header */
   const struct cfmhdr *hdr = CFMHDR(sl_frame);
   const uint8_t *base = (const uint8_t *)hdr;
 
-  uint16_t src_mep = ntohs(*(uint16_t *)(base + 4));
-  uint16_t resp_mep = ntohs(*(uint16_t *)(base + 6));
+  uint8_t oct1 = hdr->octet1.md_level;
+  uint8_t md_level = (oct1 >> 5) & 0x07;
+  uint8_t version = oct1 & 0x1F;
+
+  uint16_t sender_mep = ntohs(*(uint16_t *)(base + 4));
+  uint16_t reflector_mep = ntohs(*(uint16_t *)(base + 6));
   uint32_t test_id = ntohl(*(uint32_t *)(base + 8));
-  uint32_t txfcf = ntohl(*(uint32_t *)(base + 12));
-  uint32_t txfcb = ntohl(*(uint32_t *)(base + 16));
+  uint32_t counter_tx = ntohl(*(uint32_t *)(base + 12));
+  uint32_t counter_trx = ntohl(*(uint32_t *)(base + 16));
 
-  syslog(LOG_INFO, "CFM/Y.1731: opcode=%u flags=0x%02x tlv_offset=%u",
-         hdr->opcode, hdr->flags, hdr->tlv_offset);
+  syslog(LOG_INFO,
+         "CFM/Y.1731 Header: md_level=%u version=%u opcode=0x%02x "
+         "flags=0x%02x tlv_offset=%u",
+         md_level, version, hdr->opcode, hdr->flags, hdr->tlv_offset);
 
-  syslog(LOG_INFO, "  src_mep=%u resp_mep=%u test_id=%u txfcf=%u txfcb=%u",
-         src_mep, resp_mep, test_id, txfcf, txfcb);
+  syslog(LOG_INFO,
+         "%s Fields: sender_mep=%u reflector_mep=%u test_id=%u "
+         "counter_tx=%u counter_trx=%u",
+         pkt_type_str, sender_mep, reflector_mep, test_id, counter_tx,
+         counter_trx);
 }
 
 /*
@@ -981,7 +1004,7 @@ void process_slm_frame(char *ifname, uint8_t *frame, int size,
   uint32_t local_rx_count;
 
   if (verbose) {
-    log_slm_frame(frame, size, CFM_SLM);
+    // log_slm_frame(frame, size, CFM_SLM);
   }
 
   /* 2) Extract the 4‐byte Test ID at offset 8 in the CFM header */
