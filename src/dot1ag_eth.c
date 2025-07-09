@@ -990,32 +990,40 @@ static session_t *sessions = NULL;
 //------------------------------------------------------------------------------
 // Lookup-or-create session for (peer_mep, test_id)
 //------------------------------------------------------------------------------
-static session_t *get_session(uint16_t peer_mep, uint32_t test_id) {
+static session_t *get_session(uint16_t peer_mep, uint32_t test_id,
+                              int verbose) {
+  session_key_t key = {peer_mep, test_id};
   session_t *s;
 
-  HASH_FIND(hh, sessions, &test_id, sizeof(test_id), s);
-  if (s && s->peer_mep == peer_mep) {
-    return s;
+  HASH_FIND(hh, sessions, &key, sizeof(key), s);
+  if (!s) {
+    s = malloc(sizeof(*s));
+    if (!s) {
+      syslog(LOG_ERR, "Failed to allocate memory for session: peer %u test %u",
+             peer_mep, test_id);
+      return NULL;
+    }
+    if (verbose) {
+      syslog(LOG_INFO, "Creating new session for peer_mep=%u, test_id=%u",
+             peer_mep, test_id);
+    }
+    s->key = key;
+    s->rx_count = 0;
+    s->last_seen = time(NULL);
+    HASH_ADD(hh, sessions, key, sizeof(key), s);
+  } else {
+    if (verbose) {
+      syslog(LOG_INFO, "Found existing session for peer_mep=%u, test_id=%u",
+             peer_mep, test_id);
+    }
   }
-  if (s) {
-    // same test_id but different peer_mep → remove old entry
-    HASH_DEL(sessions, s);
-    free(s);
-    s = NULL;
-  }
-
-  s = malloc(sizeof(*s));
-  s->peer_mep = peer_mep;
-  s->test_id = test_id;
-  s->rx_count = 0;
-  s->last_seen = time(NULL);
-  HASH_ADD(hh, sessions, test_id, sizeof(test_id), s);
   return s;
 }
 
 static time_t last_eviction = 0;
 
-void maybe_evict_stale_sessions(time_t max_age_sec, time_t interval_sec) {
+void maybe_evict_stale_sessions(time_t max_age_sec, time_t interval_sec,
+                                int verbose) {
   time_t now = time(NULL);
   if (now - last_eviction < interval_sec) {
     return;
@@ -1025,6 +1033,10 @@ void maybe_evict_stale_sessions(time_t max_age_sec, time_t interval_sec) {
   session_t *s, *tmp;
   HASH_ITER(hh, sessions, s, tmp) {
     if (now - s->last_seen > max_age_sec) {
+      if (verbose) {
+        syslog(LOG_INFO, "Evicting stale session: peer_mep=%u, test_id=%u",
+               s->key.peer_mep, s->key.test_id);
+      }
       HASH_DEL(sessions, s);
       free(s);
     }
@@ -1036,7 +1048,7 @@ void process_slm_frame(char *ifname, uint8_t *frame, int size,
   struct cfmhdr *hdr = CFMHDR(frame);
   uint8_t *base = (uint8_t *)hdr;
 
-  maybe_evict_stale_sessions(EVICT_MAX_AGE, EVICT_INTERVAL);
+  maybe_evict_stale_sessions(EVICT_MAX_AGE, EVICT_INTERVAL, verbose);
 
   if (verbose) {
     log_slm_frame(frame, size, CFM_SLM);
@@ -1047,7 +1059,14 @@ void process_slm_frame(char *ifname, uint8_t *frame, int size,
   memcpy(&test_id_raw, &base[8], sizeof(test_id_raw));
   uint32_t test_id = ntohl(test_id_raw);
 
-  session_t *s = get_session(peer_mep, test_id);
+  session_t *s = get_session(peer_mep, test_id, verbose);
+  if (!s) {
+    syslog(LOG_ERR,
+           "process_slm_frame: failed to create session for peer_mep=%u, "
+           "test_id=%u",
+           peer_mep, test_id);
+    return;
+  }
 
   s->rx_count += 1;
   s->last_seen = time(NULL);

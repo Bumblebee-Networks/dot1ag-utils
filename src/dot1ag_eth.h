@@ -73,10 +73,15 @@ void process_slm_frame(char *ifname, uint8_t *frame, int size,
 // how often to run the eviction logic (seconds)
 #define EVICT_INTERVAL 60 // 1 minute
 
+typedef struct {
+  uint16_t peer_mep;
+  uint32_t test_id;
+} session_key_t;
+
+// 2) Your session entry keeps that key verbatim
 typedef struct session {
-  uint16_t peer_mep; // key part 1
-  uint32_t test_id;  // key part 2
-  uint32_t rx_count; // Counter TRX
-  time_t last_seen;  // for expiry
-  UT_hash_handle hh; // makes this struct hashable
+  session_key_t key; // composite key
+  uint32_t rx_count;
+  time_t last_seen;
+  UT_hash_handle hh;
 } session_t;
