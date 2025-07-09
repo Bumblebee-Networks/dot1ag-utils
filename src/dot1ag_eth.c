@@ -27,7 +27,6 @@
  */
 
 #include "config.h"
-#include "uthash.h"
 
 #include <fcntl.h>
 #include <net/if.h>
@@ -986,14 +985,6 @@ int cfm_send_slr(char *ifname, uint8_t *slm_frame, int size, uint8_t *local_mac,
   return 0;
 }
 
-typedef struct session {
-  uint16_t peer_mep; // key part 1
-  uint32_t test_id;  // key part 2
-  uint32_t rx_count; // Counter TRX
-  time_t last_seen;  // for expiry
-  UT_hash_handle hh; // makes this struct hashable
-} session_t;
-
 static session_t *sessions = NULL;
 
 //------------------------------------------------------------------------------
@@ -1045,7 +1036,7 @@ void process_slm_frame(char *ifname, uint8_t *frame, int size,
   struct cfmhdr *hdr = CFMHDR(frame);
   uint8_t *base = (uint8_t *)hdr;
 
-  maybe_evict_stale_sessions(60, 60);
+  maybe_evict_stale_sessions(EVICT_MAX_AGE, EVICT_INTERVAL);
 
   if (verbose) {
     log_slm_frame(frame, size, CFM_SLM);
