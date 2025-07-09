@@ -1022,8 +1022,8 @@ static session_t *get_session(uint16_t peer_mep, uint32_t test_id,
 
 static time_t last_eviction = 0;
 
-void maybe_evict_stale_sessions(time_t max_age_sec, time_t interval_sec,
-                                int verbose) {
+static void maybe_evict_stale_sessions(time_t max_age_sec, time_t interval_sec,
+                                       int verbose) {
   time_t now = time(NULL);
   if (now - last_eviction < interval_sec) {
     return;
@@ -1054,7 +1054,10 @@ void process_slm_frame(char *ifname, uint8_t *frame, int size,
     log_slm_frame(frame, size, CFM_SLM);
   }
 
-  uint16_t peer_mep = ntohs(*(uint16_t *)(base + 4));
+  uint16_t peer_mep_raw;
+  memcpy(&peer_mep_raw, &base[4], sizeof(peer_mep_raw));
+  uint16_t peer_mep = ntohs(peer_mep_raw);
+
   uint32_t test_id_raw;
   memcpy(&test_id_raw, &base[8], sizeof(test_id_raw));
   uint32_t test_id = ntohl(test_id_raw);
